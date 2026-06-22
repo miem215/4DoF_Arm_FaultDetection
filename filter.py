@@ -9,8 +9,8 @@ class UnscentedKalmanFilter:
         Measurement vector z: [enc_pos1...3, enc_vel1...3] (6x1)
         """
         self.dt = dt
-        self.n_x = 6  # State dimension
-        self.n_z = 6  # Measurement dimension
+        self.n_x = 8  # State dimension
+        self.n_z = 8  # Measurement dimension
         
         # --- UKF Tuning Parameters (Van der Merwe Scaled Sigma Points) ---
         self.alpha = 1e-3  
@@ -27,8 +27,8 @@ class UnscentedKalmanFilter:
         self.Q = np.eye(self.n_x) * 1e-4  
         
         # R: Measurement Noise (Doubt in the MuJoCo sensors)
-        self.R = np.diag([0.005**2, 0.005**2, 0.005**2,   
-                          0.02**2,  0.02**2,  0.02**2])   
+        self.R = np.diag([0.005**2, 0.005**2, 0.005**2,  0.005**2,
+                          0.02**2,  0.02**2,  0.02**2, 0.02**2])   
         
         # Calculate Unscented Transform Weights
         self.Wc, self.Wm = self._compute_weights()
@@ -72,8 +72,8 @@ class UnscentedKalmanFilter:
         The nonlinear state transition function f(x, u).
         Mirrors the Euler integration perfectly.
         """
-        q = state[0:3]
-        dq = state[3:6]
+        q = state[0:4]
+        dq = state[4:8]
         
         # Apply Euler integration
         q_next = q + dq * self.dt
@@ -136,4 +136,4 @@ class UnscentedKalmanFilter:
         self.x = self.x + K @ (z - z_prior)
         self.P = self.P - K @ S @ K.T
         
-        return self.x[0:3], self.x[3:6]
+        return self.x[0:4], self.x[4:8]

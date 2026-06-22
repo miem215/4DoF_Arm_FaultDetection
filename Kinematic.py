@@ -6,6 +6,7 @@ class KinematicsEngine:
         self.L1_z = 0.2
         self.L2_z = 1.0
         self.L3_z = 1.0
+        self.L4_z = 1.0
         self.EE_z = 1.0
 
     def rot_z(self, theta):
@@ -36,6 +37,7 @@ class KinematicsEngine:
         theta1 = q[0]
         theta2 = q[1]
         theta3 = q[2]
+        theta4 = q[3]
 
         # T01: Base to Link 1 (Translate Z by 0.2, Rotate Z by theta1)
         T01 = self.translate_z(self.L1_z) @ self.rot_z(theta1)
@@ -45,12 +47,15 @@ class KinematicsEngine:
         
         # T23: Link 2 to Link 3 (Translate Z by 1.0, Rotate Y by theta3)
         T23 = self.translate_z(self.L3_z) @ self.rot_y(theta3)
+
+        # T34: Link 3 to Link 4 (Translate Z by 1.0, Rotate Y by theta3)
+        T34 = self.translate_z(self.L4_z) @ self.rot_y(theta4)
         
         # T3_EE: Link 3 to End-Effector (Translate Z by 1)
-        T3_EE = self.translate_z(self.EE_z)
+        T4_EE = self.translate_z(self.EE_z)
 
         # Chain them together
-        T0_EE = T01 @ T12 @ T23 @ T3_EE
+        T0_EE = T01 @ T12 @ T23 @ T34 @T4_EE
         
         # Extract the translation vector (x, y, z)
         return T0_EE[0:3, 3]

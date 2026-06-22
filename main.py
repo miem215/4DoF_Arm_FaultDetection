@@ -24,14 +24,14 @@ def main():
     target_pos = data.xpos[target_body_id] + np.array([0.0, 0.0, 0.07])
     
     # Initialize previous control input for the UKF prediction step
-    u_prev = np.zeros(3)
+    u_prev = np.zeros(4)
 
     with mujoco.viewer.launch_passive(model, data) as viewer:
         while viewer.is_running():
             # --- 1. SENSOR (Hardware Reality) ---
             raw_sensor_bus = np.array(data.sensordata)
-            noisy_pos = raw_sensor_bus[0:3] + np.random.normal(0, 0.005, 3) 
-            noisy_vel = raw_sensor_bus[3:6] + np.random.normal(0, 0.02, 3)
+            noisy_pos = raw_sensor_bus[0:4] + np.random.normal(0, 0.005, 4) 
+            noisy_vel = raw_sensor_bus[4:8] + np.random.normal(0, 0.02, 4)
             
             # Combine into the 6x1 measurement vector Z
             z_meas = np.concatenate((noisy_pos, noisy_vel))
@@ -50,26 +50,26 @@ def main():
             obs_pos = data.xpos[obs_body_id].copy()
             distance = np.linalg.norm(ee_pos_est - target_pos)
 
+            try:
+            #CRITICAL FIX: Feed the CasADi solver the clean estimate, NOT the noise
+                optimal_acc = controller.solve(q_est, dq_est, target_pos, obs_pos)
+            except Exception as e:
+                print(f"Solver failed: {e}")
+                optimal_acc = np.zeros(4)
+
+
             if distance < tolerance:
-                if not target_reached:
+              
                     print(f"Target Reached! Error: {distance*1000:.1f} mm. Switching to Hold Mode.")
-                    target_reached = True
-                optimal_acc = np.zeros(3)
-            else:
-                try:
-                    # CRITICAL FIX: Feed the CasADi solver the clean estimate, NOT the noise
-                    optimal_acc = controller.solve(q_est, dq_est, target_pos, obs_pos)
-                except Exception as e:
-                    print(f"Solver failed: {e}")
-                    optimal_acc = np.zeros(3)
+   
 
             # --- 4. SYSTEM UPDATE ---
             # Save the calculated acceleration to feed the UKF predict step on the next loop
             u_prev = optimal_acc.copy()
 
-            data.qacc[:3] = optimal_acc
+            data.qacc[:4] = optimal_acc
             mujoco.mj_inverse(model, data)
-            data.ctrl[:3] = data.qfrc_inverse[:3].copy()
+            data.ctrl[:4] = data.qfrc_inverse[:4].copy()
             
             mujoco.mj_step(model, data)
             viewer.sync()
