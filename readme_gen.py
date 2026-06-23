@@ -1,4 +1,6 @@
-# 4-DOF Robotic Arm: NMPC & UKF in MuJoCo
+# Use 'r' before the quotes to create a "Raw String". 
+# This stops Python from messing with the LaTeX backslashes!
+readme_content = r"""# 4-DOF Robotic Arm: NMPC & UKF in MuJoCo
 
 ## Project Overview
 
@@ -129,3 +131,9 @@ To launch the simulation with the passive MuJoCo viewer:
 ```bash
 python main.py
 ```
+"""
+
+with open("README.md", "w", encoding="utf-8") as f:
+    f.write(readme_content)
+
+print("Success! The Academic README.md file has been generated in your folder.")
