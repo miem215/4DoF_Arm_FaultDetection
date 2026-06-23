@@ -6,12 +6,14 @@ The system is designed to track a target coordinate while proactively dodging a 
 
 ## Motivation & Project Evolution
 
-This project evolved through several high-level modifications to bridge the gap between a basic robotic simulation and a realistic, hardware-ready control architecture:
+This project evolved through several modifications to arrive current control architecture:
 
-* **Kinematic Upgrade (3-DOF to 4-DOF):** The manipulator was upgraded from 3 to 4 degrees of freedom. This added kinematic redundancy is crucial; it allows the arm to maintain a positional lock on the target while simultaneously contorting its internal posture to dodge intermediate obstacles.
-* **Dynamic Environments:** The project transitioned from static spatial waypoints to a highly dynamic environment by introducing a continuously swinging obstacle. This necessitated the shift to real-time Nonlinear Model Predictive Control (NMPC) to proactively predict and recalculate safe trajectories on the fly.
-* **Sim-to-Real State Estimation:** To simulate physical hardware limitations, pristine simulation data was intentionally corrupted with Gaussian noise. An Unscented Kalman Filter (UKF) was implemented from scratch to clean this sensor data before feeding it to the NMPC, mimicking the exact pipeline required for real-world hardware encoders.
+* **Kinematic Upgrade (3-DOF to 4-DOF):** The manipulator was upgraded from 3 to 4 degrees of freedom. This added kinematic redundancy allows the arm to maintain a positional lock on the target while simultaneously contorting its internal posture to dodge obstacles.
+* **Dynamic Environments:** The project transitioned from using stationary obstacle to dynamic obstacle. This necessitated the shift to real-time Nonlinear Model Predictive Control (NMPC) to proactively predict and recalculate safe trajectories on the fly.
+* **State Estimation:** To simulate physical hardware limitations, pristine simulation data was intentionally corrupted with Gaussian noise. An Unscented Kalman Filter (UKF) was implemented from scratch to clean this sensor data before feeding it to the NMPC, mimicking the exact pipeline required for real-world hardware encoders.
 * **Whole-Body Collision Awareness:** The collision constraints evolved from simple "end-effector-only" checking to a planar whole-body force field. Virtual nodes are now mathematically calculated along the arm's links to prevent intermediate joints (like the elbow or wrist) from clipping the obstacle.
+
+<img width="589" height="501" alt="4DoF_arm" src="https://github.com/user-attachments/assets/bb05b217-597d-4e91-8c6b-935fcfb1d968" />
 
 ## Design Justification & Computational Profiling
 
@@ -23,9 +25,7 @@ To ensure this controller is viable for physical hardware deployment, specific a
 
 ## Sim-to-Real Considerations
 
-Many simulation projects assume perfect access to ground-truth state data. To bridge the gap to physical robotics, this pipeline explicitly simulates cheap, noisy hardware:
-
-* **Sensor Noise Injection:** Gaussian noise ($\mathcal{N}(0, R)$) is continuously injected into MuJoCo's pristine joint position and velocity sensor buses to simulate encoder inaccuracies.
+* **Sensor Noise Injection:** Gaussian noise ($\mathcal{N}(0, R)$) is continuously injected into MuJoCo's pristine joint position and velocity sensor readings to simulate encoder inaccuracies.
 * **Why the UKF?** An Unscented Kalman Filter (UKF) was implemented from scratch to clean this noisy data before it reaches the NMPC. The UKF was chosen specifically over an Extended Kalman Filter (EKF) because the arm's forward kinematics are highly nonlinear. The UKF utilizes deterministic sigma points to propagate the state distribution, completely bypassing the need for the complex, error-prone Jacobian derivations required by an EKF.
 
 ## Mathematical Formulation
