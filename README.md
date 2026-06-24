@@ -10,8 +10,6 @@ This project evolved through several modifications to arrive current control arc
 
 * **Kinematic Upgrade (3-DOF to 4-DOF):** The manipulator was upgraded from 3 to 4 degrees of freedom. This added kinematic redundancy allows the arm to maintain a positional lock on the target while simultaneously contorting its internal posture to dodge obstacles.
 * **Dynamic Environments:** The project transitioned from using stationary obstacle to dynamic obstacle. This necessitated the shift to real-time Nonlinear Model Predictive Control (NMPC) to proactively predict and recalculate safe trajectories on the fly.
-* **State Estimation:** To simulate physical hardware limitations, pristine simulation data was intentionally corrupted with Gaussian noise. An Unscented Kalman Filter (UKF) was implemented from scratch to clean this sensor data before feeding it to the NMPC, mimicking the exact pipeline required for real-world hardware encoders.
-* **Whole-Body Collision Awareness:** The collision constraints evolved from simple "end-effector-only" checking to a planar whole-body force field. Virtual nodes are now mathematically calculated along the arm's links to prevent intermediate joints (like the elbow or wrist) from clipping the obstacle.
 
 <img width="589" height="501" alt="4DoF_arm" src="https://github.com/user-attachments/assets/bb05b217-597d-4e91-8c6b-935fcfb1d968" />
 
