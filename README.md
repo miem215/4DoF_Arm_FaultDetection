@@ -4,6 +4,18 @@ This project simulates a 4 Degree-of-Freedom (4-DOF) robotic arm in the MuJoCo p
 
 The system is designed to track a target coordinate while proactively dodging a dynamic, swinging obstacle, demonstrating advanced optimal control and state estimation in a simulated hardware environment.
 
+## File Structure
+
+* main.py - The core simulation loop. Initializes MuJoCo, injects Gaussian noise into the sensor bus, and ties the UKF and NMPC pipelines together.
+
+* controller.py - Contains the CasADi optimization logic. Defines the explicit dynamics, cost functions, and non-linear collision constraints over a finite prediction horizon.
+
+* filter.py - Contains the Unscented Kalman Filter (UKF) implementation. Uses deterministic sigma points to filter noisy joint positions and velocities.
+
+* Kinematic.py - The kinematic engine handling symbolic forward kinematics for the CasADi solver.
+
+* 3DoFarm.xml - The MuJoCo environment specification, defining the physical attributes of the arm, the dynamic obstacle, and the target.
+
 ## Motivation & Project Evolution
 
 This project evolved through several modifications to arrive current control architecture:
@@ -97,33 +109,29 @@ $$
 (x_{node} - x_{obs})^2 + (y_{node} - y_{obs})^2 + s_k \geq r_{safe}^2
 $$
 
-## Algorithmic Limitations & Local Minima
+## Current State & Features
 
-Because the collision avoidance relies on a soft-constraint slack variable formulation, the resulting optimization landscape is highly **non-convex**. 
+Advanced State Estimation: Filters Gaussian noise from joint sensors before feeding states into the controller.
 
-* **The Local Minimum Trap:** If the dynamic obstacle swings perfectly along the line-of-sight between the end-effector and the target, the IPOPT solver can occasionally fall into a local minimum. To navigate *around* the obstacle, the NMPC must temporarily move away from the target (increasing the immediate tracking cost). 
-* **Future Mitigations:** Future work will explore integrating a higher-level global path planner (such as RRT* or A*) to provide collision-free waypoints, or implementing Control Barrier Functions (CBFs) to mathematically force the solver out of these non-convex traps.
+Dynamic Postural Costs (NMPC): State-dependent cost weights. Distal joints stiffen when reaching from afar to act like a spear, and loosen dynamically as the end-effector enters the target zone.
 
-## File Structure
+Dynamic Obstacle Avoidance: Environment features a moving dynamic obstacle. The NMPC recalculates on the fly to dodge it.
 
-* `main.py` - The core simulation loop. Initializes MuJoCo, injects Gaussian noise, and ties the UKF and NMPC pipelines together.
-* `controller.py` - Contains the CasADi optimization logic. Defines the explicit dynamics, cost functions, and non-linear collision constraints.
-* `filter.py` - Contains the Unscented Kalman Filter (UKF) implementation. 
-* `Kinematic.py` - The kinematic engine handling symbolic forward kinematics for the CasADi solver.
-* `3DoFarm.xml` - The MuJoCo environment specification.
+Target Tracking & Hold: The arm aggressively pursues the target coordinate and switches to a stable hold/hover state upon breaching the tolerance threshold.
 
-## Installation & Usage
+## Known Issues
 
-**Prerequisites:**
-You will need Python 3.8+ and the following libraries:
+Whole-Body vs. Tip Collision: Currently, the end-effector dodges the dynamic obstacle perfectly using a 2D planar force field constraint. However, the system struggles with strict Whole-Body Collision Avoidance. While intermediate virtual nodes have been drafted, the intermediate links can still occasionally clip the obstacle. The discrete virtual node approach requires further tuning to create a truly impenetrable force field along the 1-meter link lengths.
 
-```bash
-pip install mujoco casadi numpy scipy
-```
+## Future Roadmap
 
-**Running the Simulation:**
-To launch the simulation with the passive MuJoCo viewer:
+Continuous Collision Avoidance: Replace the discrete "Virtual Node" point-mass constraints with true Line-Segment to Point distance formulas.
 
+Computer Vision Integration: Replace the raw MuJoCo mocap_pos data with a simulated RGB camera pipeline to estimate the obstacle's state dynamically.
+
+Dynamic Target Interception: Feed an estimated target velocity vector into the CasADi prediction horizon to intercept moving targets.
+
+Reinforcement Learning Benchmarking: Wrap the environment in a Gymnasium interface to benchmark this NMPC's performance against PPO/SAC deep learning agents.
 ```bash
 python main.py
 ```
