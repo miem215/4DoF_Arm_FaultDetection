@@ -59,6 +59,25 @@ UKF performace on the joint velocity in current setup:
 
 ## Nonlinear Model Predictive Controller (NMPC)
 ### 1. Why NMPC
+
+While the complete optimization problem balances multiple operational objectives (such as control effort and postural alignment), the core optimization landscape is fundamentally dominated by a "tug-of-war" between two primary costs: Target Tracking and Obstacle Avoidance.
+
+Figure 1 visualizes this cost landscape mapped across the 2D Cartesian workspace of the end-effector. As demonstrated by the bifurcated topology, the addition of the obstacle avoidance penalty transforms the otherwise simple quadratic tracking problem into a highly non-convex optimization space.
+
+This geometric reality is the fundamental justification for utilizing a Nonlinear Model Predictive Controller (NMPC). Standard Linear MPC architectures rely on Quadratic Programming (QP) solvers that require a strictly convex feasible region. If a QP solver were presented with this landscape, it would become trapped in a local minimum against the obstacle's boundary and fail to find a solution. By deploying an NMPC, the system leverages CasADi's advanced IPOPT interior-point solver, which is natively capable of evaluating non-linear trigonometric kinematics and routing trajectories around non-convex constraint manifolds.
+
+To generate this geometric visualization, the simplified cost function $J$ is evaluated as:
+
+$$
+J = \sum_{k=0}^{N-1} \left( J_{track, k} + J_{slack, k} \right)
+$$
+
+* **Target Tracking:** $J_{track, k} = w_{track} \| p_{end_effecor} - p_{target} \|_2^2$
+* **Obstacle Slack Penalty:** $J_{slack, k} = W_{obs} \cdot s_k$ (where $W_{obs} = 100,000$)
+
+<img width="2245" height="2373" alt="optimization_landscape" src="https://github.com/user-attachments/assets/17f24016-833b-4487-85ba-f37dbf04749f" />
+
+
 ### 2. System Dynamics
 
 The NMPC predicts the future states of the arm over a horizon $N$ using Explicit Euler integration. Let the state vector be $x = [q, \dot{q}]^T \in \mathbb{R}^8$ and the control input be joint accelerations $u = \ddot{q} \in \mathbb{R}^4$. The system dynamics are defined as:
