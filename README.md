@@ -73,7 +73,7 @@ J = \sum_{k=0}^{N-1} \left( J_{track, k} + J_{slack, k} \right)
 $$
 
 * **Target Tracking:** $J_{track, k} = w_{track} \| p_{end_effecor} - p_{target} \|_2^2$
-* **Obstacle Slack Penalty:** $J_{slack, k} = W_{obs} \cdot s_k$ (where $W_{obs} = 100,000$)
+* **Obstacle Slack Penalty:** $J_{slack, k} = W_{obs} \cdot s_k$
 
 <img width="2245" height="2373" alt="optimization_landscape" src="https://github.com/user-attachments/assets/17f24016-833b-4487-85ba-f37dbf04749f" />
 
@@ -96,10 +96,15 @@ $$
 
 Where the individual running costs are defined as:
 
-* **Target Tracking:** $J_{track, k} = 500 \| \text{FK}(q_k) - p_{target} \|_2^2$
+* **Target Tracking:** $J_{track, k} = w_{traking}\| \text{FK}(q_k) - p_{target} \|_2^2$
 * **Control & Velocity Effort:** $J_{effort, k} = 0.2 \| u_k \|_2^2 + 0.2 \| \dot{q}_k \|_2^2$
 * **Postural Alignment:** $J_{posture, k} = (q_k - q_{home})^T W_{posture} (q_k - q_{home})$
-* **Obstacle Slack Penalty:** $J_{slack, k} = W_{obs} \cdot s_k$ (where $W_{obs} = 100,000$)
+* **Obstacle Slack Penalty:** $J_{slack, k} = W_{obs} \cdot s_k$
+
+  Note:
+  The velocity effort: The velocity penalty acts as an artificial damping system, it forces the arm to slow down gracefully as it approaches the target
+  The postual alignment: This penalty mathematically resolves the 4-DOF kinematic redundancy by projecting a secondary objective into the null-space. It prevents unpredictable, erratic joint contortions and keeps the arm away from kinematic singularities.
+  tracking running cost and terminal cost: Because the NMPC predicts a finite window into the future (e.g., 0.4 seconds), the solver is inherently "short-sighted." With only a running cost, if the solver realizes it cannot reach the exact target within that 0.4s window, it may settle for getting "close enough," leading to persistent steady-state error or aimless drifting.
 
 ## Whole-Body Collision Avoidance (Virtual Nodes)
 
