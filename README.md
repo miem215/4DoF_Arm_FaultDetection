@@ -1,9 +1,5 @@
 # 4-DoF Robotic Arm: MIMO Diagnostics & Fault Isolation
 
-![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
-![MuJoCo](https://img.shields.io/badge/MuJoCo-3.0%2B-lightgrey)
-![CasADi](https://img.shields.io/badge/CasADi-Optimal_Control-orange)
-
 A high-fidelity simulation of a 4 Degree-of-Freedom (4-DOF) interconnected robotic arm. This project serves as a testbed for advanced nonlinear control (NMPC), state estimation (UKF), and frequency-domain fault diagnostics in complex, multi-variable dynamic systems.
 
 The primary research objective of this repository is to successfully isolate localized mechanical degradation (such as actuator wear) from cross-coupled structural vibrations across interconnected joints.
@@ -30,19 +26,22 @@ To replicate industrial constant-speed diagnostic tests, the arm is commanded to
 
 ---
 
-## Case Study: Cross-Coupled False Positives
+## Analytical Findings: The Pitfalls of MIMO Fault Isolation
 
-Detecting a fault is straightforward; isolating it in an interconnected MIMO system is mathematically complex. 
-
-During initial diagnostic development, a naive relative-thresholding algorithm successfully detected the 6.0 Hz anomaly. However, **it falsely flagged Joint 1 (Base)** as the source of the mechanical failure, despite the fault being physically injected into Joint 2.
+Detecting a fault is straightforward; isolating its root cause in an interconnected Multi-Input Multi-Output (MIMO) system presents complex mathematical and physical challenges. This testbed successfully demonstrated two classic diagnostic traps when analyzing open-chain kinematics.
 
 ![System Diagnostics Plot](figure/fig_analysis.png)
 
-This false positive perfectly illustrates the challenges of Multi-Input Multi-Output (MIMO) system diagnostics:
+### Trap 1: Velocity Space & The Inertial Anchor
+In initial tests, the diagnostic algorithm analyzed **velocity residuals**, comparing signal peaks against each joint's individual noise floor. The algorithm correctly detected the 6.0 Hz fault but falsely flagged **Joint 1 (Base)** as the root cause. 
+* **The Physics:** Joint 1 has a massive effective inertia ($M_{11}$), acting as the system's anchor. It absorbs the cross-coupled reaction forces of the shaking shoulder with minimal physical displacement. 
+* **The Algorithmic Failure:** Because Joint 1 was commanded to remain stationary, its baseline noise floor was practically zero. The tiny cross-coupled vibration easily triggered its relative peak threshold, while the true fault in Joint 2 was buried in the broadband noise of its macro-movement. 
+* **The Fix:** The pipeline was updated to compare absolute spectral power across the entire system, correctly isolating Joint 2 in velocity space.
 
-* **Physical Cross-Coupling:** Because the arm is a rigidly coupled multibody system, the violent 6.0 Hz torque ripple in the shoulder physically translates through the inertia matrix $M(q)$. Joint 1, acting as the anchored base, absorbs the reaction forces, causing the 6.0 Hz vibration to physically propagate into Joint 1's sensor data.
-* **Algorithmic Vulnerability:** The initial pipeline evaluated fault peaks relative to each joint's *individual* noise floor. Because Joint 2 was executing a massive kinematic sweep, its baseline broadband noise was high, visually masking the absolute power of the 6.0 Hz peak. Conversely, because Joint 1 was commanded to remain perfectly stationary, its baseline noise floor was zero. The cross-coupled vibration easily triggered Joint 1's relative threshold, leading to a misclassification of the root cause.
-
-**The Solution:** The pipeline was rewritten to abandon isolated relative thresholds. It now performs a system-wide absolute power comparison at the targeted harmonic. By measuring where the structural vibration is mathematically most powerful, the algorithm correctly ignores the cross-coupled noise and isolates Joint 2 as the true root cause.
+### Trap 2: Acceleration Space & Kinematic Amplification (The Whip Effect)
+To achieve a cleaner dynamic response, the pipeline was shifted to analyze **acceleration residuals** ($\Delta \ddot{q} = \ddot{q}_{actual} - \ddot{q}_{commanded}$). While the frequency peaks became incredibly sharp, the absolute power comparison flagged **Joint 3 (Elbow)** as the root cause, registering exactly double the acceleration magnitude of the broken Joint 2.
+* **The Physics:** Joint 3 sits at the end of the shaking 1.0-meter proximal link. Because the distal links (3 and 4) possess significantly lower rotational inertia than the heavy shoulder, they act as kinematic amplifiers. The vibration of the base whips the lightweight distal links, forcing them to undergo massive angular acceleration to maintain their posture.
+* **The Mathematical Proof:** The acceleration error is defined by the inverse inertia matrix: $\Delta \ddot{q} = M^{-1}(q) \tau_{fault}$. In robotic arms with heavy bases and light tips, the off-diagonal cross-coupled terms (e.g., $(M^{-1})_{32}$) are often significantly larger than the diagonal driving terms ($(M^{-1})_{22}$), mathematically guaranteeing that the healthy distal joint will accelerate faster than the broken proximal joint.
+* **The Conclusion:** Raw acceleration magnitude cannot be used to isolate faults in open-chain robotics. To truly isolate the root cause, acceleration residuals must be mapped back through the inertia matrix to generate **Torque Residuals** ($\tau_{res} = M(q)\Delta\ddot{q}$).
 
 ---
