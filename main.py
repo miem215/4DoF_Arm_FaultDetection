@@ -13,44 +13,58 @@ def get_constant_speed_joint_ref(t, amplitude, freq_hz, offset=0.0):
     omega = 2.0 * np.pi * freq_hz
     q_target = (2.0 * amplitude / np.pi) * np.arcsin(np.sin(omega * t)) + offset
     return q_target
-
 def run_frequency_diagnostics(residual_history, sample_rate, fault_freq_hz, joint_names):
     """
     Processes logged residuals using Welch's Method to isolate the fault frequency.
+    Compares absolute power across all joints to find the root cause of the vibration.
     """
     residuals = np.array(residual_history)
     num_joints = residuals.shape[1]
     fig, axes = plt.subplots(num_joints, 2, figsize=(12, 2.5 * num_joints))
     
     print("\n--- Running Interconnected System Diagnostics ---")
+    
+    fault_powers = [] # Track the strength of the fault in each joint
+    
     for i in range(num_joints):
         res_data = residuals[:, i]
         
         # Time Domain Plot
-        axes[i, 0].plot(res_data, color='#555555', alpha=0.8)
-        axes[i, 0].set_title(f'{joint_names[i]} - Velocity Residuals')
-        axes[i, 0].set_ylabel('Error (rad/s)')
+        axes[i, 0].plot(res_data, color='#555555', alpha=0.8, linewidth=1)
+        axes[i, 0].set_title(f'{joint_names[i]} - Acceleration Residuals')
+        axes[i, 0].set_ylabel('Error (rad/s²)')
         
-        # Frequency Domain Plot (Power Spectral Density)
-        freqs, psd = welch(res_data, fs=sample_rate, nperseg=min(1024, len(res_data)))
-        axes[i, 1].plot(freqs, psd, color='#1f77b4')
-        axes[i, 1].set_title(f'{joint_names[i]} - Power Spectral Density')
+        # Frequency Domain Plot (Absolute Power Spectrum)
+        # Added scaling='spectrum' to calculate true physical magnitude
+        freqs, psd = welch(res_data, fs=sample_rate, nperseg=min(1024, len(res_data)), scaling='spectrum')
+        axes[i, 1].plot(freqs, psd, color='#1f77b4', linewidth=1.5)
+        axes[i, 1].set_title(f'{joint_names[i]} - Power Spectrum')
         axes[i, 1].set_ylabel('Power')
-        axes[i, 1].set_xlim(0, sample_rate / 2)
+        axes[i, 1].set_xlim(0, 25) 
         
-        # Peak Detection/Fault Isolation Logic
-        peaks, _ = find_peaks(psd, height=np.max(psd) * 0.25)
-        peak_freqs = freqs[peaks]
-        fault_detected = any(np.isclose(f, fault_freq_hz, atol=0.4) for f in peak_freqs)
+        # Find the specific power at our fault frequency (6.0 Hz)
+        fault_bin_index = np.argmin(np.abs(freqs - fault_freq_hz))
+        power_at_fault = psd[fault_bin_index]
+        fault_powers.append(power_at_fault)
         
-        if fault_detected:
-            axes[i, 1].axvline(fault_freq_hz, color='red', linestyle='--', label='Fault Frequency')
-            axes[i, 1].legend()
-            print(f"[ALERT] Mechanical fault isolated in {joint_names[i]} at {fault_freq_hz} Hz!")
-            
+        axes[i, 1].axvline(fault_freq_hz, color='red', linestyle='--', alpha=0.5, label='Known Fault Freq')
+        axes[i, 1].legend()
+
     plt.tight_layout()
     plt.savefig("figure/fig_analysis.png", dpi=150, bbox_inches='tight')
     plt.show()
+
+    # --- ROOT CAUSE ISOLATION LOGIC ---
+    root_cause_index = np.argmax(fault_powers)
+    
+    print("\n[DIAGNOSTIC REPORT]")
+    for i in range(num_joints):
+        power = fault_powers[i]
+        # Calculate true physical magnitude (amplitude) in rad/s²
+        magnitude = np.sqrt(2 * power) 
+        print(f"{joint_names[i]} 6.0Hz Power: {power:.6e} | Accel Ripple Magnitude: {magnitude:.6f} rad/s²")
+        
+    print(f"\n[ALERT] Root cause physically isolated to: {joint_names[root_cause_index]}")
 
 def main():
     # 1. Setup
@@ -59,8 +73,6 @@ def main():
 
     mujoco.mj_resetDataKeyframe(model, data, 0)
     mujoco.mj_forward(model, data)
-
-    obs_mocap_id = model.body('obstacle').mocapid[0]
 
     # MATCH THE TIMESTEPS
     dt = 0.02
@@ -111,12 +123,11 @@ def main():
             dynamic_target_pos = np.array(controller.kin.forward_kinematics_sym(q_ref_joints)).flatten()
 
             # Keep the background obstacle tracking active
-            data.mocap_pos[obs_mocap_id][1] = np.sin(sim_time * 8.0) * 0.25
-            obs_pos = data.mocap_pos[obs_mocap_id].copy()
+    
 
             # --- 4. CONTROL LOOP ---
             try:
-                optimal_acc = controller.solve(q_est, dq_est, dynamic_target_pos, obs_pos)
+                optimal_acc = controller.solve(q_est, dq_est, dynamic_target_pos)
             except Exception as e:
                 print(f"Solver failed: {e}")
                 optimal_acc = np.zeros(4)
@@ -141,19 +152,25 @@ def main():
                 
             # --- 6. LOGGING VELOCITY RESIDUALS ---
             # Quantify the deviation between the noisy sensor reality and what the clean UKF model expected
-            current_velocity_residual = noisy_vel - dq_est
-            residual_history.append(current_velocity_residual)
+            current_acc_residual = (data.qacc[:4] - optimal_acc).copy()
+            residual_history.append(current_acc_residual)
+
+            if len(residual_history) % 50 == 0:
+                print(f"Simulation Time: {sim_time:.2f} seconds")
             
             viewer.sync()
 
     # --- 7. POST-RUN DIAGNOSTICS ---
     # Sampling rate calculation: 10 simulation steps per loop step at dt=0.02
     effective_sample_rate = 1.0 / (dt) 
-    warmup_samples = int(2.0 / dt)
+    warmup_samples = int(15.0 / dt)
     if len(residual_history) > warmup_samples + 100:
-        run_frequency_diagnostics(residual_history, effective_sample_rate, fault_frequency, joint_names)
+        clean_history = residual_history[warmup_samples:]
+        run_frequency_diagnostics(clean_history, effective_sample_rate, fault_frequency, joint_names)
     else:
-        print("Simulation ended too quickly to generate diagnostic plots.")
+        sim_time_achieved = len(residual_history) * dt
+        print(f"\nSimulation ended too quickly! You only generated {sim_time_achieved:.1f}s of data.")
+        print(f"You need at least {15.0 + (100*dt)}s of simulation time to run this diagnostic.")
 
 if __name__ == '__main__':
     main()     
