@@ -5,6 +5,7 @@ from controller import NMPCController
 from filter import UnscentedKalmanFilter
 from scipy.signal import welch, find_peaks
 import matplotlib.pyplot as plt
+from diagnostics import run_frequency_diagnostics, plot_inertia_evolution
 
 def get_constant_speed_joint_ref(t, amplitude, freq_hz, offset=0.0):
     """
@@ -13,58 +14,6 @@ def get_constant_speed_joint_ref(t, amplitude, freq_hz, offset=0.0):
     omega = 2.0 * np.pi * freq_hz
     q_target = (2.0 * amplitude / np.pi) * np.arcsin(np.sin(omega * t)) + offset
     return q_target
-def run_frequency_diagnostics(residual_history, sample_rate, fault_freq_hz, joint_names):
-    """
-    Processes logged residuals using Welch's Method to isolate the fault frequency.
-    Compares absolute power across all joints to find the root cause of the vibration.
-    """
-    residuals = np.array(residual_history)
-    num_joints = residuals.shape[1]
-    fig, axes = plt.subplots(num_joints, 2, figsize=(12, 2.5 * num_joints))
-    
-    print("\n--- Running Interconnected System Diagnostics ---")
-    
-    fault_powers = [] # Track the strength of the fault in each joint
-    
-    for i in range(num_joints):
-        res_data = residuals[:, i]
-        
-        # Time Domain Plot
-        axes[i, 0].plot(res_data, color='#555555', alpha=0.8, linewidth=1)
-        axes[i, 0].set_title(f'{joint_names[i]} - Acceleration Residuals')
-        axes[i, 0].set_ylabel('Error (rad/s²)')
-        
-        # Frequency Domain Plot (Absolute Power Spectrum)
-        # Added scaling='spectrum' to calculate true physical magnitude
-        freqs, psd = welch(res_data, fs=sample_rate, nperseg=min(1024, len(res_data)), scaling='spectrum')
-        axes[i, 1].plot(freqs, psd, color='#1f77b4', linewidth=1.5)
-        axes[i, 1].set_title(f'{joint_names[i]} - Power Spectrum')
-        axes[i, 1].set_ylabel('Power')
-        axes[i, 1].set_xlim(0, 25) 
-        
-        # Find the specific power at our fault frequency (6.0 Hz)
-        fault_bin_index = np.argmin(np.abs(freqs - fault_freq_hz))
-        power_at_fault = psd[fault_bin_index]
-        fault_powers.append(power_at_fault)
-        
-        axes[i, 1].axvline(fault_freq_hz, color='red', linestyle='--', alpha=0.5, label='Known Fault Freq')
-        axes[i, 1].legend()
-
-    plt.tight_layout()
-    plt.savefig("figure/fig_analysis.png", dpi=150, bbox_inches='tight')
-    plt.show()
-
-    # --- ROOT CAUSE ISOLATION LOGIC ---
-    root_cause_index = np.argmax(fault_powers)
-    
-    print("\n[DIAGNOSTIC REPORT]")
-    for i in range(num_joints):
-        power = fault_powers[i]
-        # Calculate true physical magnitude (amplitude) in rad/s²
-        magnitude = np.sqrt(2 * power) 
-        print(f"{joint_names[i]} 6.0Hz Power: {power:.6e} | Accel Ripple Magnitude: {magnitude:.6f} rad/s²")
-        
-    print(f"\n[ALERT] Root cause physically isolated to: {joint_names[root_cause_index]}")
 
 def main():
     # 1. Setup
@@ -92,7 +41,9 @@ def main():
     fault_amplitude = 1.8  # Torque disturbance magnitude
     
     # Data logging for frequency analysis
-    residual_history = []
+    acc_history = []
+    torque_history = []
+    M_inv_history = []
     joint_names = ['Joint 1 (Base)', 'Joint 2 (Shoulder)', 'Joint 3 (Elbow)', 'Joint 4 (Wrist)']
 
     print("Starting Diagnostic Run. Close the viewer window to process frequency analysis.")
@@ -153,9 +104,26 @@ def main():
             # --- 6. LOGGING VELOCITY RESIDUALS ---
             # Quantify the deviation between the noisy sensor reality and what the clean UKF model expected
             current_acc_residual = (data.qacc[:4] - optimal_acc).copy()
-            residual_history.append(current_acc_residual)
+            
+            # Extract Inertia Matrix M(q)
+            nv = model.nv 
+            M_dense = np.zeros((nv, nv))
+            mujoco.mj_fullM(model, M_dense, data.qM)
+            M_arm = M_dense[:4, :4] 
 
-            if len(residual_history) % 50 == 0:
+            M_inv = np.linalg.inv(M_arm)
+            
+            # NEW: Log the Shoulder Diagonal [1, 1] and Elbow Cross-Coupling [2, 1]
+            M_inv_history.append([M_inv[1, 1], M_inv[2, 1]])
+            
+            # Calculate Torque Residual
+            current_torque_residual = M_arm @ current_acc_residual
+
+            # Append to distinct histories
+            acc_history.append(current_acc_residual)
+            torque_history.append(current_torque_residual)
+
+            if len(acc_history) % 50 == 0:
                 print(f"Simulation Time: {sim_time:.2f} seconds")
             
             viewer.sync()
@@ -164,11 +132,15 @@ def main():
     # Sampling rate calculation: 10 simulation steps per loop step at dt=0.02
     effective_sample_rate = 1.0 / (dt) 
     warmup_samples = int(15.0 / dt)
-    if len(residual_history) > warmup_samples + 100:
-        clean_history = residual_history[warmup_samples:]
-        run_frequency_diagnostics(clean_history, effective_sample_rate, fault_frequency, joint_names)
+    if len(acc_history) > warmup_samples + 100:
+        clean_acc = acc_history[warmup_samples:]
+        clean_torque = torque_history[warmup_samples:]
+        clean_M_inv = M_inv_history[warmup_samples:]
+        
+        run_frequency_diagnostics(clean_acc, clean_torque, effective_sample_rate, fault_frequency, joint_names)
+        plot_inertia_evolution(clean_M_inv, effective_sample_rate)
     else:
-        sim_time_achieved = len(residual_history) * dt
+        sim_time_achieved = len(acc_history) * dt
         print(f"\nSimulation ended too quickly! You only generated {sim_time_achieved:.1f}s of data.")
         print(f"You need at least {15.0 + (100*dt)}s of simulation time to run this diagnostic.")
 
