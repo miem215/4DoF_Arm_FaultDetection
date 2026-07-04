@@ -1,0 +1,15 @@
+[DIAGNOSTIC REPORT: ACCELERATION vs. TORQUE]
+Joint                | Accel Ripple (rad/s²)     | Torque Ripple (Nm)  
+----------------------------------------------------------------------
+Joint 1 (Base)       | 0.000819                  | 0.010441            
+Joint 2 (Shoulder)   | 0.220979                  | 1.780989            
+Joint 3 (Elbow)      | 0.430385                  | 0.012055            
+Joint 4 (Wrist)      | 0.169133                  | 0.003920            
+
+[ISOLATION RESULTS]
+Algorithm via Acceleration  -> Flagged: Joint 3 (Elbow) (Kinematic Amplification Trap)
+Algorithm via Torque        -> Flagged: Joint 2 (Shoulder) (True Root Cause)
+
+[INERTIA ANALYSIS COMPLETE]
+Average (M^-1)_22 Magnitude: 0.1208
+Average (M^-1)_32 Magnitude: -0.2346
