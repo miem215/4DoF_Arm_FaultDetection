@@ -25,6 +25,7 @@ def main():
 
     # MATCH THE TIMESTEPS
     dt = 0.02
+    model.opt.timestep = 0.0002
     controller = NMPCController(dt=dt, horizon=20)
     ukf = UnscentedKalmanFilter(dt=dt) 
     
@@ -86,30 +87,44 @@ def main():
             u_prev = optimal_acc.copy()
 
             # --- 5. REAL-WORLD FAULT INJECTION & PHYSICS UPDATE ---
-            data.qacc[:4] = optimal_acc
+   # 1. Map the 4 optimal accelerations to the correct 5 MuJoCo DoF indices
+            data.qacc[0] = optimal_acc[0]  # joint1
+            data.qacc[1] = optimal_acc[1]  # joint2 (dummy motor)
+            data.qacc[2] = 0.0             # joint2_flex (Assume zero acceleration for the rigid inverse dynamics calculation)
+            data.qacc[3] = optimal_acc[2]  # joint3 (elbow)
+            data.qacc[4] = optimal_acc[3]  # joint4 (wrist)
+
+            # 2. Run inverse dynamics to get required feedforward torques
             mujoco.mj_inverse(model, data)
-            
-            # Calculate nominal feedback torque
-            applied_torque = data.qfrc_inverse[:4].copy()
-            
-            # INJECT HARDWARE FAULT: Add periodic torque ripples to Joint 2 (index 1) to simulate physical wear
+
+            # 3. Extract the calculated torques ONLY for the actuated joints
+            applied_torque = np.zeros(4)
+            applied_torque[0] = data.qfrc_inverse[0]
+            applied_torque[1] = data.qfrc_inverse[1]
+            applied_torque[2] = data.qfrc_inverse[3]  # Skip index 2 (the spring)
+            applied_torque[3] = data.qfrc_inverse[4]  # Map index 4 (wrist DoF) to index 3 (wrist actuator)
+
+            # 4. INJECT HARDWARE FAULT
             torque_ripple = fault_amplitude * np.sin(2.0 * np.pi * fault_frequency * sim_time)
             applied_torque[1] += torque_ripple
-            
+
+            # 5. Send to actuators
             data.ctrl[:4] = applied_torque
             
-            for _ in range(10):
+            for _ in range(100):
                 mujoco.mj_step(model, data)
                 
             # --- 6. LOGGING VELOCITY RESIDUALS ---
             # Quantify the deviation between the noisy sensor reality and what the clean UKF model expected
-            current_acc_residual = (data.qacc[:4] - optimal_acc).copy()
+            current_acc_residual = (data.qacc[[0, 1, 3, 4]] - optimal_acc).copy()
             
             # Extract Inertia Matrix M(q)
             nv = model.nv 
             M_dense = np.zeros((nv, nv))
             mujoco.mj_fullM(model, M_dense, data.qM)
-            M_arm = M_dense[:4, :4] 
+
+            actuated_indices = [0, 1, 3, 4]
+            M_arm = M_dense[np.ix_(actuated_indices, actuated_indices)]
 
             M_inv = np.linalg.inv(M_arm)
             
