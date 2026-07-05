@@ -1,21 +1,29 @@
 # 4-DoF Robotic Arm: MIMO Diagnostics & Fault Isolation
 
-This repository serves as a testbed for fault detection methodology in highly coupled, multi-input multi-output (MIMO) mechatronic systems, 4DoF. The objective of this project is twofold: first, to successfully decouple and extract additive micro-faults from the torque domain without taking the system offline; and second, to investigate the mathematical boundaries of this diagnostic approach when subjected to massive parametric degradation.
+This repository serves as a testbed for fault detection methodology in highly coupled, multi-input multi-output (MIMO) mechatronic systems, 4DoF arm. The objective of this project is twofold: first, to successfully detect micro-faults from the torque domain; and second, to investigate the mathematical boundaries of this diagnostic approach when subjected to massive parametric degradation.
 
 The investigation is structured into two phases: 
 
-* establishing a rigid-body diagnostic baseline, a torque ripple of 6Hz was introduced at joint 2 to simulate a defect mechanical component.
-* subsequently breaking that baseline to analyze closed-loop sensitivity during a structural failure. A spring was introduced in the joint 2, simulating the deterated joint.
+* establishing a rigid-body diagnostic baseline, a torque ripple of 6Hz was introduced at joint 2 to simulate a a degrading ballscrew or nut.
+* subsequently breaking that baseline to analyze closed-loop sensitivity during a structural degradation This degradation is physically modeled by drastically reducing the stiffness of Joint 2, effectively transforming a rigid mechanical coupling into an underdamped rotational spring
+* investigate the robustness of this methodology 
 
----
+## Table of Contents
 
-## System Architecture
-
-The simulation combines sensor noise, state estimation, and whole-body optimal control.
-
-* **Physics Engine:** MuJoCo (Python bindings) executing forward dynamics at 500 Hz.
-* **Optimal Control (NMPC):** Powered by CasADi. The controller embeds the full nonlinear rigid body dynamics ($M(q)\ddot{q} + C(q, \dot{q})\dot{q} + G(q) = \tau$) within a 20-step prediction horizon. This allows the arm to track trajectories while natively compensating for shifting gravity and Coriolis forces.
-* **State Estimation (UKF):** An Unscented Kalman Filter runs at 50 Hz, fusing noisy joint position and velocity sensor data to generate clean state estimates ($\hat{q}, \hat{\dot{q}}$) for the control loop.
+* [Part 1: The Rigid Body Baseline](#part-1-the-rigid-body-baseline-mathematical-decoupling)
+  * [1. Fault Injection & Diagnostic Pipeline](#1-fault-injection--diagnostic-pipeline)
+  * [2. Analytical Findings: The Whip Effect](#2-analytical-findings-the-whip-effect)
+  * [3. Inertia Analysis](#3-inertia-analysis)
+  * [4. Diagnostic Report: Acceleration vs. Torque](#4-diagnostic-report-acceleration-vs-torque)
+* [Part 2: The Flexible Boundary (Plant-Model Mismatch & Sensitivity)](#part-2-the-flexible-boundary-plant-model-mismatch--sensitivity)
+  * [1. Time-Domain Evidence: The Control Effort Explosion](#1-time-domain-evidence-the-control-effort-explosion)
+  * [2. Parametric Degradation & Spectral Masking](#2-parametric-degradation--spectral-masking)
+  * [3. The Mathematical Proof of Instability (Z-Domain)](#3-the-mathematical-proof-of-instability-z-domain)
+  * [4. Closed-Loop Sensitivity Analysis](#4-closed-loop-sensitivity-analysis)
+* [Part 3: Robustness Boundary and Diagnosability Limits](#part-3-robustness-boundary-and-diagnosability-limits)
+  * [The Degradation Sweep (Waterfall Analysis)](#the-degradation-sweep-waterfall-analysis)
+  * [Conclusion](#conclusion)
+* [System Architecture](#system-architecture)
 
 ---
 ## Part 1: The Rigid Body Baseline
@@ -24,7 +32,7 @@ The first phase establishes a successful diagnostic pipeline for a structurally 
 
 ### 1. Fault Injection & Diagnostic Pipeline
 
-The diagnostic method is based on standard industrial constant-speed tests. The arm is commanded to execute a continuous triangle-wave trajectory (sweeping Joint 2 at a constant velocity while holding adjacent joints stationary).
+The diagnostic method is based on standard industrial sinusoidal tests. The arm is commanded to execute a continuous sinusoidal trajectory (sweeping Joint 2 with a sinusoidal velocity while holding adjacent joints stationary).
 
 1. **Hardware Fault Simulation:** A localized mechanical anomaly (mimicking a degrading ballscrew or nut) is simulated by injecting a high-frequency torque ripple ($\tau_{fault} = A \sin(\omega t)$). This is injected directly into the **Joint 2 (Shoulder)** control loop at 6.0 Hz.
 2. **Residual Generation:** The pipeline calculates an acceleration residual vector $r(t) = y(t) - \hat{y}(t)$, comparing the actual measured acceleration to the optimal acceleration commanded by the NMPC. 
@@ -36,9 +44,18 @@ The diagnostic method is based on standard industrial constant-speed tests. The 
 
 ### 2. Analytical Findings
 
-Detecting that a fault exists is straightforward; isolating its true root cause in an interconnected system is much harder. This testbed successfully demonstrated a classic diagnostic trap when analyzing open-chain kinematics.
+However detecting that a fault exists is straightforward, isolating its true root cause in an interconnected system is much harder. This testbed successfully demonstrated a classic diagnostic trap when analyzing open-chain kinematics.
 
 ![Acceleration vs Torque Diagnostics Plot](figure/fig_analysis.png)
+
+| Joint | Accel Ripple (rad/s²) | 
+| :--- | :--- | 
+| **Joint 1 (Base)** | 0.000730 | 
+| **Joint 2 (Shoulder)** | 0.227240 | 
+| **Joint 3 (Elbow)** | **0.463273** |
+| **Joint 4 (Wrist)** | 0.249227 |
+The root cause is flagged to be join 3, based on the amplitude of the noise frequency content. 
+
 
 #### The Whip Effect: Why the Elbow Accelerates Faster
 When analyzing **acceleration residuals** ($\Delta \ddot{q} = \ddot{q}_{actual} - \ddot{q}_{commanded}$), frequency peaks became incredibly sharp at 6.0 Hz for Links 2, 3, and 4. However, the algorithm flagged **Joint 3 (Elbow)** as the root cause, because it registered exactly double the acceleration magnitude of the broken Joint 2.
@@ -60,12 +77,9 @@ To prove this, we tracked the real-time values of the inverse inertia matrix dur
 
 Because the absolute value of the red line is consistently larger than the blue line throughout the entire 11.5-second sweep, it is mathematically guaranteed that the Elbow will always accelerate faster than the Shoulder when a fault occurs in the Shoulder.
 
-### 4. The Conclusion
+### 4. Diagnostic Report: Acceleration vs. Torque
 Raw acceleration magnitude cannot be used to isolate faults in open-chain robotics. To truly isolate the root cause, acceleration residuals must be mapped back through the inertia matrix to generate **Torque Residuals** ($\tau_{res} = M(q)\Delta\ddot{q}$).
 
----
-
-#### Diagnostic Report: Acceleration vs. Torque
 
 | Joint | Accel Ripple (rad/s²) | Torque Ripple (Nm) |
 | :--- | :--- | :--- |
@@ -80,7 +94,7 @@ This combined plot visualizes exactly how the diagnostic algorithm behaves befor
 * **The Red Columns (Acceleration Space):** These plots show the raw acceleration errors. You can clearly see the "Whip Effect" in action—the frequency peak for Joint 3 (Elbow) is visibly larger than the peak for the actually broken Joint 2 (Shoulder). If an algorithm stops here, it fails.
 * **The Blue Columns (Torque Space):** These plots show the same data after it has been multiplied by the robot's real-time inertia matrix. By mathematically factoring in the mass and mechanical leverage of each link, the structural distortion is stripped away. The true fault in Joint 2 (Shoulder) emerges as the undeniable dominant spike.
 
-#### Isolation Results
+##### Isolation Results
 * **Algorithm via Acceleration:** Flagged **Joint 3 (Elbow)** *(Kinematic Amplification Trap)*
 * **Algorithm via Torque:** Flagged **Joint 2 (Shoulder)** *(True Root Cause)*
 
@@ -146,4 +160,14 @@ The stiffness of Joint 2 was incrementally reduced from its nominal rigid state 
 
 ### Conclusion
 The capability to diagnose additive micro-faults in closed-loop systems is strictly bounded by the robustness margins of the controller. Highly aggressive optimal controllers required for industrial motion systems inherently possess narrower robustness margins, meaning structural parametric failures will rapidly trigger instability, masking underlying additive faults.
+
+
+## System Architecture
+
+The simulation combines sensor noise, state estimation, and whole-body optimal control.
+
+* **Physics Engine:** MuJoCo (Python bindings) executing forward dynamics at 500 Hz.
+* **Optimal Control (NMPC):** Powered by CasADi. The controller embeds the full nonlinear rigid body dynamics ($M(q)\ddot{q} + C(q, \dot{q})\dot{q} + G(q) = \tau$) within a 20-step prediction horizon. This allows the arm to track trajectories while natively compensating for shifting gravity and Coriolis forces.
+* **State Estimation (UKF):** An Unscented Kalman Filter runs at 50 Hz, fusing noisy joint position and velocity sensor data to generate clean state estimates ($\hat{q}, \hat{\dot{q}}$) for the control loop.
+---
 
