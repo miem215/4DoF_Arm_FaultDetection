@@ -99,7 +99,10 @@ This combined plot visualizes exactly how the diagnostic algorithm behaves befor
 
 ## Part 2: The Flexible Boundary (Plant-Model Mismatch & Sensitivity)
 
-The second phase introduces severe parametric degradation to expose the boundaries of residual-based fault detection in interconnected systems. This degradation is physically modeled by drastically reducing the stiffness of Joint 2, effectively transforming a rigid mechanical coupling into an underdamped rotational spring.
+The second phase introduces severe parametric degradation to expose the boundaries of residual-based fault detection in interconnected systems. This degradation is physically modeled by drastically reducing the stiffness of Joint 2, effectively transforming a rigid mechanical coupling into an underdamped rotational spring. The rotational spring is set to have a stiffness of 5000 Nm/rad. 
+
+As shown in figure below, the 6Hz frequency content has been masked by the overal noise level. Furthermore, noise at 25Hz become dominant. 
+ ![Frequency analysis with degradation](figure/fig_analysis_with_degradation.png)
 
 ### 1. Time-Domain Evidence: The Control Effort Explosion
 
@@ -115,9 +118,6 @@ To understand why the 6.0 Hz micro-fault becomes masked in the frequency domain,
 This creates a continuous limit cycle at exactly **25 Hz** (the Nyquist frequency of the 50 Hz controller). This violent time-domain chattering generates the massive broadband noise that ultimately destroys the diagnostic isolation capabilities in the frequency domain.
 
 ### 2. Parametric Degradation & Spectral Masking
-![Combined Domain Analysis Plot](figure/fig_combined_analysis.png)
-
-As demonstrated in the spectral analysis plot above, the previously isolated 6.0 Hz micro-fault is now completely subsumed by overwhelming broadband noise. The power spectrum is dominated by massive new frequency content—reaching magnitudes in the thousands—that peaks sharply at **25 Hz** (the Nyquist limit of the 50 Hz discrete controller). 
 
 This high-frequency saturation is the direct mathematical consequence of a severe plant-model mismatch. The physical arm now exhibits a low-frequency structural resonance due to the soft spring, but the NMPC's internal model still assumes it is driving a perfectly rigid plant. In its attempt to violently correct the resulting physical "bounce," the controller enters a state of instability, slamming between maximum and minimum torque commands at its fastest possible switching speed. 
 
@@ -154,8 +154,8 @@ The stiffness of Joint 2 was incrementally reduced from its nominal rigid state 
 ![Waterfall Plot of Spectral Evolution](figure/waterfall.png)
 
 *   **Minor Degradation (e.g., $K = 40,000$):** The NMPC possesses enough inherent robustness to stabilize the slight phase lag. The control effort remains bounded, no high-frequency chatter is induced, and the 6.0 Hz micro-fault can still be mathematically decoupled and isolated.
-*   **The Breaking Point (e.g., $K \approx 15,000$):** At this critical threshold, the plant-model mismatch introduces enough unmodeled phase lag to push the dominant closed-loop poles directly onto the discrete stability boundary ($z = -1$). 
-*   **Severe Degradation ($K < 15,000$):** The system enters hard bang-bang saturation. Diagnosability is completely lost to spectral masking. 
+*   **The Breaking Point (e.g., $K \approx 10,000$):** At this critical threshold, the plant-model mismatch introduces enough unmodeled phase lag to push the dominant closed-loop poles directly onto the discrete stability boundary ($z = -1$). 
+*   **Severe Degradation ($K < 5,000$):** The system enters hard bang-bang saturation. Diagnosability is completely lost to spectral masking. 
 
 ### Conclusion
 The capability to diagnose additive micro-faults in closed-loop systems is strictly bounded by the robustness margins of the controller. Highly aggressive optimal controllers required for industrial motion systems inherently possess narrower robustness margins, meaning structural parametric failures will rapidly trigger instability, masking underlying additive faults.
