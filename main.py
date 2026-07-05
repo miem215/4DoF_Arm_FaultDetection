@@ -6,13 +6,14 @@ from filter import UnscentedKalmanFilter
 from scipy.signal import welch, find_peaks
 import matplotlib.pyplot as plt
 from diagnostics import run_frequency_diagnostics, plot_inertia_evolution
+from sensitivity_analysis import calculate_sensitivity
 
 def get_constant_speed_joint_ref(t, amplitude, freq_hz, offset=0.0):
     """
     Generates a mathematically continuous constant-speed triangle wave for joint space.
     """
     omega = 2.0 * np.pi * freq_hz
-    q_target = (2.0 * amplitude / np.pi) * np.arcsin(np.sin(omega * t)) + offset
+    q_target = amplitude * np.sin(omega * t) + offset
     return q_target
 
 def main():
@@ -44,15 +45,28 @@ def main():
     # Data logging for frequency analysis
     acc_history = []
     torque_history = []
+    torque_recording = []
     M_inv_history = []
     joint_names = ['Joint 1 (Base)', 'Joint 2 (Shoulder)', 'Joint 3 (Elbow)', 'Joint 4 (Wrist)']
 
     print("Starting Diagnostic Run. Close the viewer window to process frequency analysis.")
 
+    spring_joint_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, 'joint2_flex')
+    fault_injected = False
+    fault_trigger_time = 15.0
+
     with mujoco.viewer.launch_passive(model, data) as viewer:
         while viewer.is_running():
             sim_time = data.time
-            
+
+            if sim_time >= fault_trigger_time and not fault_injected:
+            # Drop the stiffness from 50,000 to 5,000 to simulate mechanical softening
+                model.jnt_stiffness[spring_joint_id] = 50000.0
+                fault_injected = True
+                print(f"\n==================================================")
+                print(f"[{sim_time:.2f}s] ⚠️ FAULT INJECTED: Joint 2 Gearbox Degraded!")
+                print(f"==================================================\n")
+                    
             # --- 1. SENSOR (Hardware Reality with Noise) ---
             raw_sensor_bus = np.array(data.sensordata)
             noisy_pos = raw_sensor_bus[0:4] + np.random.normal(0, 0.003, 4) 
@@ -110,6 +124,8 @@ def main():
 
             # 5. Send to actuators
             data.ctrl[:4] = applied_torque
+
+            
             
             for _ in range(100):
                 mujoco.mj_step(model, data)
@@ -117,6 +133,7 @@ def main():
             # --- 6. LOGGING VELOCITY RESIDUALS ---
             # Quantify the deviation between the noisy sensor reality and what the clean UKF model expected
             current_acc_residual = (data.qacc[[0, 1, 3, 4]] - optimal_acc).copy()
+
             
             # Extract Inertia Matrix M(q)
             nv = model.nv 
@@ -137,6 +154,8 @@ def main():
             # Append to distinct histories
             acc_history.append(current_acc_residual)
             torque_history.append(current_torque_residual)
+            #torque_history.append(optimal_acc)
+            
 
             if len(acc_history) % 50 == 0:
                 print(f"Simulation Time: {sim_time:.2f} seconds")
@@ -146,7 +165,7 @@ def main():
     # --- 7. POST-RUN DIAGNOSTICS ---
     # Sampling rate calculation: 10 simulation steps per loop step at dt=0.02
     effective_sample_rate = 1.0 / (dt) 
-    warmup_samples = int(15.0 / dt)
+    warmup_samples = int(3 / dt)
     if len(acc_history) > warmup_samples + 100:
         clean_acc = acc_history[warmup_samples:]
         clean_torque = torque_history[warmup_samples:]
@@ -154,10 +173,12 @@ def main():
         
         run_frequency_diagnostics(clean_acc, clean_torque, effective_sample_rate, fault_frequency, joint_names)
         plot_inertia_evolution(clean_M_inv, effective_sample_rate)
+
+        calculate_sensitivity()
     else:
         sim_time_achieved = len(acc_history) * dt
         print(f"\nSimulation ended too quickly! You only generated {sim_time_achieved:.1f}s of data.")
-        print(f"You need at least {15.0 + (100*dt)}s of simulation time to run this diagnostic.")
+        print(f"You need at least {3+ (100*dt)}s of simulation time to run this diagnostic.")
 
 if __name__ == '__main__':
     main()     
