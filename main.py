@@ -52,21 +52,16 @@ def main():
     print("Starting Diagnostic Run. Close the viewer window to process frequency analysis.")
 
     spring_joint_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, 'joint2_flex')
-    fault_injected = False
-    fault_trigger_time = 15.0
+
 
     with mujoco.viewer.launch_passive(model, data) as viewer:
         while viewer.is_running():
             sim_time = data.time
 
-            if sim_time >= fault_trigger_time and not fault_injected:
+            
             # Drop the stiffness from 50,000 to 5,000 to simulate mechanical softening
-                model.jnt_stiffness[spring_joint_id] = 50000.0
-                fault_injected = True
-                print(f"\n==================================================")
-                print(f"[{sim_time:.2f}s] ⚠️ FAULT INJECTED: Joint 2 Gearbox Degraded!")
-                print(f"==================================================\n")
-                    
+            model.jnt_stiffness[spring_joint_id] = 5000.0
+            
             # --- 1. SENSOR (Hardware Reality with Noise) ---
             raw_sensor_bus = np.array(data.sensordata)
             noisy_pos = raw_sensor_bus[0:4] + np.random.normal(0, 0.003, 4) 
