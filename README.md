@@ -42,7 +42,7 @@ The diagnostic method is based on standard industrial sinusoidal tests. The arm 
 
 ---
 
-### 2. Analytical Findings
+### 2. Analytical Findings: The Whip Effect
 
 However detecting that a fault exists is straightforward, isolating its true root cause in an interconnected system is much harder. This testbed successfully demonstrated a classic diagnostic trap when analyzing open-chain kinematics.
 
@@ -54,7 +54,6 @@ However detecting that a fault exists is straightforward, isolating its true roo
 | **Joint 2 (Shoulder)** | 0.227240 | 
 | **Joint 3 (Elbow)** | **0.463273** |
 | **Joint 4 (Wrist)** | 0.249227 |
-The root cause is flagged to be join 3, based on the amplitude of the noise frequency content. 
 
 
 #### The Whip Effect: Why the Elbow Accelerates Faster
@@ -64,7 +63,7 @@ When analyzing **acceleration residuals** ($\Delta \ddot{q} = \ddot{q}_{actual} 
 * **Mechanical Shock Absorption:** The amplification does not cascade indefinitely. By undergoing massive angular acceleration to fight the shaking, Joint 3 effectively acts as a shock absorber. It stabilizes the base of Joint 4, meaning the lightest link no longer needs to aggressively accelerate to hold its target.
 * **The Mathematical Proof:** The acceleration error is defined by the inverse inertia matrix: $\Delta \ddot{q} = M^{-1}(q) \tau_{fault}$. In robotic arms with heavy bases and light tips, the off-diagonal cross-coupled terms (e.g., $(M^{-1})_{32}$) are often significantly larger than the diagonal driving terms ($(M^{-1})_{22}$), mathematically guaranteeing that the healthy distal joint will accelerate faster than the broken proximal joint. As the mechanical leverage drops further down the chain, the matrix decays ($(M^{-1})_{42}$ is much smaller), which explains why Joint 4's acceleration drops off.
 
-### 3. Inertia Analysis
+### 3. Inertia Analysis: mathematical support for torque domain method
 
 To prove this, we tracked the real-time values of the inverse inertia matrix during the movement:
 * **Average $(M^{-1})_{22}$ Magnitude:** 0.1071
