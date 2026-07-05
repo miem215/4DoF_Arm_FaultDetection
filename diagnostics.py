@@ -109,3 +109,26 @@ def plot_inertia_evolution(M_inv_history, sample_rate):
     print("\n[INERTIA ANALYSIS COMPLETE]")
     print(f"Average (M^-1)_22 Magnitude: {np.mean(data[:, 0]):.4f}")
     print(f"Average (M^-1)_32 Magnitude: {np.mean(data[:, 1]):.4f}")
+
+def plot_timeseries(time_series, sample_rate):
+        data = np.array(time_series)
+        time_axis = np.arange(len(data)) / sample_rate
+        
+        plt.figure(figsize=(10, 5))
+        
+        plt.plot(time_axis, data[:,1], label=r'$(M^{-1})_{22}$ (Shoulder Diagonal)', 
+                color='#1f77b4', linewidth=2)
+        
+        plt.plot(time_axis, data[:,2], label=r'$(M^{-1})_{22}$ (Shoulder Diagonal)', 
+                color='#d62728', linewidth=2)
+        
+        plt.title('time series')
+        plt.xlabel('Time (s)')
+        
+        plt.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        plt.savefig("figure/time_series.png", dpi=150, bbox_inches='tight')
+        plt.show()
+        
+        

@@ -4,8 +4,8 @@ This repository serves as a testbed for fault detection methodology in highly co
 
 The investigation is structured into two phases: 
 
-* establishing a rigid-body diagnostic baseline,
-* subsequently breaking that baseline to analyze closed-loop sensitivity during a structural failure.
+* establishing a rigid-body diagnostic baseline, a torque ripple of 6Hz was introduced at joint 2 to simulate a defect mechanical component.
+* subsequently breaking that baseline to analyze closed-loop sensitivity during a structural failure. A spring was introduced in the joint 2, simulating the deterated joint.
 
 ---
 
@@ -86,17 +86,64 @@ This combined plot visualizes exactly how the diagnostic algorithm behaves befor
 
 ## Part 2: The Flexible Boundary (Plant-Model Mismatch & Sensitivity)
 
-The second phase introduces severe parametric degradation to expose the boundaries of residual-based fault detection. The degration is modeled as a spring at joint 2. 
+The second phase introduces severe parametric degradation to expose the boundaries of residual-based fault detection in interconnected systems. This degradation is physically modeled by drastically reducing the stiffness of Joint 2, effectively transforming a rigid mechanical coupling into an underdamped rotational spring.
 
-### 1. Parametric Degradation & Spectral Masking
+### 1. Time-Domain Evidence: The Control Effort Explosion
+
+To understand why the 6.0 Hz micro-fault becomes masked in the frequency domain, we must first look at the controller's behavior in the time domain. The plots below compare the NMPC's acceleration signals during the healthy benchmark (left) and the degraded state (right).
+
+| Healthy Benchmark | Degraded State (Flexible Plant) |
+| :---: | :---: |
+| ![Time Series Benchmark](figure/time_series_bench.png) | ![Time Series Degraded](figure/time_series.png) |
+
+1.  **Healthy State (Rigid Plant):** The controller effort is bounded within normal operational limits. The noise profile allows the mathematical decoupling of the 6.0 Hz injected fault.
+2.  **Degraded State (Flexible Plant):** Once the joint stiffness drops, the control effort magnitude instantly increases by over 700%. More importantly, the signal density reveals violent, continuous high-frequency switching. Because the NMPC's internal model assumes a rigid body, it interprets the physical sag of the new "spring" as a massive positional error. It commands a massive torque correction, causing the spring to snap back, triggering an opposite correction on the very next time step. 
+
+This creates a continuous limit cycle at exactly **25 Hz** (the Nyquist frequency of the 50 Hz controller). This violent time-domain chattering generates the massive broadband noise that ultimately destroys the diagnostic isolation capabilities in the frequency domain.
+
+### 2. Parametric Degradation & Spectral Masking
 ![Combined Domain Analysis Plot](figure/fig_combined_analysis.png)
 
-As demonstrated in the spectral analysis plot above, the previously isolated 6.0 Hz micro-fault is now completely subsumed by overwhelming broadband noise. The power spectrum is dominated by massive new frequency content—reaching magnitudes in the thousands—that peaks sharply at 25 Hz (the Nyquist limit of the 50 Hz discrete controller).
+As demonstrated in the spectral analysis plot above, the previously isolated 6.0 Hz micro-fault is now completely subsumed by overwhelming broadband noise. The power spectrum is dominated by massive new frequency content—reaching magnitudes in the thousands—that peaks sharply at **25 Hz** (the Nyquist limit of the 50 Hz discrete controller). 
 
-This high-frequency saturation is the direct mathematical consequence of a severe plant-model mismatch. The physical arm now exhibits a low-frequency structural resonance due to the soft spring, but the NMPC's internal model still assumes it is driving a perfectly rigid plant. In its attempt to violently correct the resulting physical "bounce," the controller enters a state of instability, slamming between maximum and minimum torque commands at its fastest possible switching speed.
+This high-frequency saturation is the direct mathematical consequence of a severe plant-model mismatch. The physical arm now exhibits a low-frequency structural resonance due to the soft spring, but the NMPC's internal model still assumes it is driving a perfectly rigid plant. In its attempt to violently correct the resulting physical "bounce," the controller enters a state of instability, slamming between maximum and minimum torque commands at its fastest possible switching speed. 
 
-### 2. Closed-Loop Sensitivity Analysis
+This phase successfully demonstrates a critical principle in high-performance mechatronic diagnostics: **extreme high-frequency control chatter is often a secondary symptom of a low-frequency structural failure.** Ultimately, the massive control effort creates spectral masking, rendering the diagnostic pipeline blind to the underlying 6.0 Hz additive fault.
+
+### 3. The Mathematical Proof of Instability (Z-Domain)
+
+The 25 Hz chatter is not arbitrary noise; it is exactly the Nyquist frequency of the 50 Hz discrete controller. Mathematically, the severe plant-model mismatch (applying a rigid-body optimal feedback gain to a highly flexible plant) introduces unmodeled phase lag that pushes the closed-loop dominant eigenvalue out of the discrete unit circle.
+
+*   **The NMPC Prediction Error:** The NMPC calculates its optimal torque ($u_k$) by predicting the future states using its internal rigid model: $x_{k+1}^{pred} = A_{rigid}x_k + B_{rigid}u_k$. However, the physical reality is the degraded, flexible plant. The actual state that arrives at the next time step is governed by the new physics: $x_{k+1}^{real} = A_{flex}x_k + B_{flex}u_k$.
+*   **The Closed-Loop Eigenvalue Shift:** Because the NMPC aggressively penalizes positional tracking errors, it acts locally as a high-gain linear feedback controller ($u_k = -K x_k$). The gain matrix $K$ was implicitly optimized to place the eigenvalues of the *rigid* closed-loop system, $(A_{rigid} - B_{rigid}K)$, safely inside the unit circle ($|z| < 1$).
+*   **The Breaking Point:** When that same high-gain $K$ is applied to the degraded plant, the unmodeled flexible spring in $A_{flex}$ introduces significant phase lag. This mathematically forces the dominant closed-loop eigenvalues of $(A_{flex} - B_{flex}K)$ to migrate leftward along the real axis until crossing the boundary at exactly $z = -1$.
+*   **The Result:** A discrete pole at $z = -1$ results in a time-domain response proportional to $(-1)^k$, forcing the NMPC to violently alternate its torque command from positive to negative at every single time step.
+
+### 4. Closed-Loop Sensitivity Analysis 
+
+To formalize the failure, we mathematically derive the continuous-time state-space matrices of the MuJoCo plant to map the Closed-Loop Sensitivity Function:
+$$S(j\omega) = (I + G(j\omega)K(j\omega))^{-1}$$
+
 ![sensitiveity_analysis_plot](figure/sensitivity_analysis.png)
 
+*   **The Low-Frequency Resonance (0 - 2 Hz):** The magnitude of the degraded state (red curve) spikes rapidly above 0 dB. This proves mathematically that the closed-loop system is actively amplifying the low-frequency structural bounce.
+*   **The High-Frequency Filtering (> 5 Hz):** The sensitivity drops linearly into the negative dB range. The floppy joint acts as a mechanical low-pass filter, physically absorbing the high-frequency injected torques (the 6.0 Hz ripple) rather than transmitting them to the heavy arm links. Because the physical structure absorbs the high-frequency fault, the controller's sensitivity to it physically drops.
 
+## Part 3: Robustness Boundary and Diagnosability Limits
+
+The previous analysis establishes that massive structural degradation induces spectral masking via control instability. However, this raises a fundamental control theory question: at what exact threshold of degradation does the diagnostic algorithm break down? 
+
+Because the 25 Hz spectral masking is fundamentally a symptom of the NMPC exceeding its robustness margins, the viability of the diagnostic pipeline is directly tied to the controller's tuning. To map this boundary, the diagnostic pipeline was tested across a continuous sweep of parametric degradation.
+
+### The Degradation Sweep
+The stiffness of Joint 2 was incrementally reduced from its nominal rigid state ($K = 50,000$) down to severe failure ($K = 5,000$). 
+
+![Waterfall Plot of Spectral Evolution](figure/waterfall.png)
+
+*   **Minor Degradation (e.g., $K = 40,000$):** The NMPC possesses enough inherent robustness to stabilize the slight phase lag. The control effort remains bounded, no high-frequency chatter is induced, and the 6.0 Hz micro-fault can still be mathematically decoupled and isolated.
+*   **The Breaking Point (e.g., $K \approx 15,000$):** At this critical threshold, the plant-model mismatch introduces enough unmodeled phase lag to push the dominant closed-loop poles directly onto the discrete stability boundary ($z = -1$). 
+*   **Severe Degradation ($K < 15,000$):** The system enters hard bang-bang saturation. Diagnosability is completely lost to spectral masking. 
+
+### Conclusion
+The capability to diagnose additive micro-faults in closed-loop systems is strictly bounded by the robustness margins of the controller. Highly aggressive optimal controllers required for industrial motion systems inherently possess narrower robustness margins, meaning structural parametric failures will rapidly trigger instability, masking underlying additive faults.
 

@@ -5,7 +5,7 @@ from controller import NMPCController
 from filter import UnscentedKalmanFilter
 from scipy.signal import welch, find_peaks
 import matplotlib.pyplot as plt
-from diagnostics import run_frequency_diagnostics, plot_inertia_evolution
+from diagnostics import run_frequency_diagnostics, plot_inertia_evolution, plot_timeseries
 from sensitivity_analysis import calculate_sensitivity
 
 def get_constant_speed_joint_ref(t, amplitude, freq_hz, offset=0.0):
@@ -45,7 +45,7 @@ def main():
     # Data logging for frequency analysis
     acc_history = []
     torque_history = []
-    torque_recording = []
+    torque_command = []
     M_inv_history = []
     joint_names = ['Joint 1 (Base)', 'Joint 2 (Shoulder)', 'Joint 3 (Elbow)', 'Joint 4 (Wrist)']
 
@@ -149,7 +149,7 @@ def main():
             # Append to distinct histories
             acc_history.append(current_acc_residual)
             torque_history.append(current_torque_residual)
-            #torque_history.append(optimal_acc)
+            torque_command.append(optimal_acc)
             
 
             if len(acc_history) % 50 == 0:
@@ -165,9 +165,11 @@ def main():
         clean_acc = acc_history[warmup_samples:]
         clean_torque = torque_history[warmup_samples:]
         clean_M_inv = M_inv_history[warmup_samples:]
+        clean_torque_com = torque_command[warmup_samples:]
         
         run_frequency_diagnostics(clean_acc, clean_torque, effective_sample_rate, fault_frequency, joint_names)
         plot_inertia_evolution(clean_M_inv, effective_sample_rate)
+        plot_timeseries(clean_torque_com,effective_sample_rate)
 
         calculate_sensitivity()
     else:
