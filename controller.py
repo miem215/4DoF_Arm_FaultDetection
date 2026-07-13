@@ -3,19 +3,17 @@ import numpy as np
 from Kinematic import KinematicsEngine
 
 class NMPCController:
-    def __init__(self, dt=0.05, horizon=20):
+    def __init__(self, dt=0.02, horizon=20):
         self.dt = dt
         self.N = horizon
         self.kin = KinematicsEngine()
         self.opti = ca.Opti()
-        
         # Initialize the optimization variables
         self.X = self.opti.variable(8, self.N + 1)
         self.U = self.opti.variable(4, self.N)
         
     def solve(self, q_curr, dq_curr, target_pos):
         # Reset and clear previous constraints
-        self.opti = ca.Opti() 
         X = self.opti.variable(8, self.N + 1)
         U = self.opti.variable(4, self.N)
         

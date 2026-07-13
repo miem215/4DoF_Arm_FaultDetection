@@ -60,7 +60,7 @@ def main():
 
             
             # Drop the stiffness from 50,000 to 5,000 to simulate mechanical softening
-            model.jnt_stiffness[spring_joint_id] = 5000.0
+            model.jnt_stiffness[spring_joint_id] = 50000.0
             
             # --- 1. SENSOR (Hardware Reality with Noise) ---
             raw_sensor_bus = np.array(data.sensordata)

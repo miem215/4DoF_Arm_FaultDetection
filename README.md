@@ -163,10 +163,10 @@ The capability to diagnose additive micro-faults in closed-loop systems is stric
 
 ## System Architecture
 
-The simulation combines sensor noise, state estimation, and whole-body optimal control.
-
 * **Physics Engine:** MuJoCo (Python bindings) executing forward dynamics at 500 Hz.
 * **Optimal Control (NMPC):** Powered by CasADi. The controller embeds the full nonlinear rigid body dynamics ($M(q)\ddot{q} + C(q, \dot{q})\dot{q} + G(q) = \tau$) within a 20-step prediction horizon. This allows the arm to track trajectories while natively compensating for shifting gravity and Coriolis forces.
 * **State Estimation (UKF):** An Unscented Kalman Filter runs at 50 Hz, fusing noisy joint position and velocity sensor data to generate clean state estimates ($\hat{q}, \hat{\dot{q}}$) for the control loop.
+* **Diagnostic Pipeline:** The diagnostic architecture logs the deviation between the NMPC's commanded acceleration and the measured physical response. It actively extracts the real-time inertia matrix ($M(q)$) to map acceleration residuals into torque residuals, before utilizing Welch's method for Power Spectral Density (PSD) analysis to isolate the fault frequency.
+
 ---
 

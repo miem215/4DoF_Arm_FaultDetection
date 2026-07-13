@@ -1,0 +1,48 @@
+import casadi as ca
+
+class KinematicsEngine:
+    def __init__(self):
+        self.L1_z = 0.2
+        self.L2_z = 1.0
+        self.L3_z = 1.0
+        self.L4_z = 1.0
+        self.EE_z = 1.0
+
+    def rot_z(self, theta):
+        return ca.vertcat(
+            ca.horzcat(ca.cos(theta), -ca.sin(theta), 0, 0),
+            ca.horzcat(ca.sin(theta),  ca.cos(theta), 0, 0),
+            ca.horzcat(0, 0, 1, 0),
+            ca.horzcat(0, 0, 0, 1)
+        )
+
+    def rot_y(self, theta):
+        return ca.vertcat(
+            ca.horzcat(ca.cos(theta), 0, ca.sin(theta), 0),
+            ca.horzcat(0, 1, 0, 0),
+            ca.horzcat(-ca.sin(theta), 0, ca.cos(theta), 0),
+            ca.horzcat(0, 0, 0, 1)
+        )
+
+    def translate_z(self, z):
+        return ca.vertcat(
+            ca.horzcat(1, 0, 0, 0),
+            ca.horzcat(0, 1, 0, 0),
+            ca.horzcat(0, 0, 1, z),
+            ca.horzcat(0, 0, 0, 1)
+        )
+
+    def forward_kinematics_sym(self, q):
+        theta1 = q[0]
+        theta2 = q[1]
+        theta3 = q[2]
+        theta4 = q[3]
+
+        T01 = self.translate_z(self.L1_z) @ self.rot_z(theta1)
+        T12 = self.translate_z(self.L2_z) @ self.rot_y(theta2)
+        T23 = self.translate_z(self.L3_z) @ self.rot_y(theta3)
+        T34 = self.translate_z(self.L4_z) @ self.rot_y(theta4)
+        T4_EE = self.translate_z(self.EE_z)
+
+        T0_EE = T01 @ T12 @ T23 @ T34 @ T4_EE
+        return T0_EE[0:3, 3]
