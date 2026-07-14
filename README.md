@@ -56,7 +56,7 @@ The diagnostic method is based on standard industrial sinusoidal tests. The arm 
 2. **Residual Generation:** The pipeline calculates an acceleration residual vector $r(t) = y(t) - \hat{y}(t)$, comparing the actual measured acceleration to the optimal acceleration commanded by the NMPC. 
 3. **Frequency Isolation:** Welch’s method is applied to the time-domain residuals to estimate the Power Spectral Density (PSD), transforming the noise into a clear frequency spectrum to flag the fault.
 
-![Arm Kinematics and Disturbance Setup](figure/MuJoCo.jpg)
+![Arm Kinematics and Disturbance Setup](01_Diagnostic_Boundaries/figure/MuJoCo.jpg)
 
 ---
 
@@ -64,7 +64,7 @@ The diagnostic method is based on standard industrial sinusoidal tests. The arm 
 
 However detecting that a fault exists is straightforward, isolating its true root cause in an interconnected system is much harder. This testbed successfully demonstrated a classic diagnostic trap when analyzing open-chain kinematics.
 
-![Acceleration vs Torque Diagnostics Plot](figure/fig_analysis.png)
+![Acceleration vs Torque Diagnostics Plot](01_Diagnostic_Boundaries/figure/fig_analysis.png)
 
 | Joint | Accel Ripple (rad/s²) | 
 | :--- | :--- | 
@@ -87,7 +87,7 @@ To prove this, we tracked the real-time values of the inverse inertia matrix dur
 * **Average $(M^{-1})_{22}$ Magnitude:** 0.1071
 * **Average $(M^{-1})_{32}$ Magnitude:** -0.1995
 
-![Inverse Inertia Evolution Plot](figure/fig_inertia_evolution_bench.png)
+![Inverse Inertia Evolution Plot](01_Diagnostic_Boundaries/figure/fig_inertia_evolution_bench.png)
 
 * **The Blue Line $(M^{-1})_{22}$:** Represents how much the Shoulder (Joint 2) accelerates when a torque is applied to itself. Its magnitude stays relatively low, hovering between 0.1 and 0.18.
 * **The Red Line $(M^{-1})_{32}$:** Represents how much the Elbow (Joint 3) accelerates when that exact same torque is applied to the Shoulder. Its absolute magnitude is significantly higher, sweeping between 0.15 and 0.40.
@@ -109,7 +109,7 @@ Raw acceleration magnitude cannot be used to isolate faults in open-chain roboti
 * **Algorithm via Acceleration:** Flagged **Joint 3 (Elbow)** *(Kinematic Amplification Trap)*
 * **Algorithm via Torque:** Flagged **Joint 2 (Shoulder)** *(True Root Cause)*
 
-![Combined Domain Analysis Plot](figure/fig_combined_analysis_bench.png)
+![Combined Domain Analysis Plot](01_Diagnostic_Boundaries/figure/fig_combined_analysis_bench.png)
 This combined plot visualizes exactly how the diagnostic algorithm behaves before and after the inertia correction:
 
 * **The Red Columns (Acceleration Space):** These plots show the raw acceleration errors. You can clearly see the "Whip Effect" in action—the frequency peak for Joint 3 (Elbow) is visibly larger than the peak for the actually broken Joint 2 (Shoulder). If an algorithm stops here, it fails.
@@ -125,7 +125,7 @@ This combined plot visualizes exactly how the diagnostic algorithm behaves befor
 The second phase introduces severe parametric degradation to expose the boundaries of residual-based fault detection in interconnected systems. This degradation is physically modeled by drastically reducing the stiffness of Joint 2, effectively transforming a rigid mechanical coupling into an underdamped rotational spring. The rotational spring is set to have a stiffness of 5000 Nm/rad. 
 
 As shown in figure below, the 6Hz frequency content has been masked by the overal noise level. Furthermore, noise at 25Hz become dominant. 
- ![Frequency analysis with degradation](figure/fig_analysis_with_degradation.png)
+ ![Frequency analysis with degradation](01_Diagnostic_Boundaries/figure/fig_analysis_with_degradation.png)
 
 ### 1. Time-Domain Evidence: The Control Effort Explosion
 
@@ -133,7 +133,7 @@ To understand why the 6.0 Hz micro-fault becomes masked in the frequency domain,
 
 | Healthy Benchmark | Degraded State (Flexible Plant) |
 | :---: | :---: |
-| ![Time Series Benchmark](figure/time_series_bench.png) | ![Time Series Degraded](figure/time_series.png) |
+| ![Time Series Benchmark](01_Diagnostic_Boundaries/figure/time_series_bench.png) | ![Time Series Degraded](01_Diagnostic_Boundaries/figure/time_series.png) |
 
 1.  **Healthy State (Rigid Plant):** The controller effort is bounded within normal operational limits. The noise profile allows the mathematical decoupling of the 6.0 Hz injected fault.
 2.  **Degraded State (Flexible Plant):** Once the joint stiffness drops, the control effort magnitude instantly increases by over 700%. More importantly, the signal density reveals violent, continuous high-frequency switching. Because the NMPC's internal model assumes a rigid body, it interprets the physical sag of the new "spring" as a massive positional error. It commands a massive torque correction, causing the spring to snap back, triggering an opposite correction on the very next time step. 
@@ -160,7 +160,7 @@ The 25 Hz chatter is not arbitrary noise; it is exactly the Nyquist frequency of
 To formalize the failure, we mathematically derive the continuous-time state-space matrices of the MuJoCo plant to map the Closed-Loop Sensitivity Function:
 $$S(j\omega) = (I + G(j\omega)K(j\omega))^{-1}$$
 
-![sensitiveity_analysis_plot](figure/sensitivity_analysis.png)
+![sensitiveity_analysis_plot](01_Diagnostic_Boundaries/figure/sensitivity_analysis.png)
 
 *   **The Low-Frequency Resonance (0 - 2 Hz):** The magnitude of the degraded state (red curve) spikes rapidly above 0 dB. This proves mathematically that the closed-loop system is actively amplifying the low-frequency structural bounce.
 *   **The High-Frequency Filtering (> 5 Hz):** The sensitivity drops linearly into the negative dB range. The floppy joint acts as a mechanical low-pass filter, physically absorbing the high-frequency injected torques (the 6.0 Hz ripple) rather than transmitting them to the heavy arm links. Because the physical structure absorbs the high-frequency fault, the controller's sensitivity to it physically drops.
@@ -179,7 +179,7 @@ Because the 25 Hz spectral masking is fundamentally a symptom of the NMPC exceed
 ### The Degradation Sweep
 The stiffness of Joint 2 was incrementally reduced from its nominal rigid state ($K = 50,000$) down to severe failure ($K = 5,000$). 
 
-![Waterfall Plot of Spectral Evolution](figure/waterfall.png)
+![Waterfall Plot of Spectral Evolution](01_Diagnostic_Boundaries/figure/waterfall.png)
 
 *   **Minor Degradation (e.g., $K = 40,000$):** The NMPC possesses enough inherent robustness to stabilize the slight phase lag. The control effort remains bounded, no high-frequency chatter is induced, and the 6.0 Hz micro-fault can still be mathematically decoupled and isolated.
 *   **The Breaking Point (e.g., $K \approx 10,000$):** At this critical threshold, the plant-model mismatch introduces enough unmodeled phase lag to push the dominant closed-loop poles directly onto the discrete stability boundary ($z = -1$). 
@@ -233,7 +233,7 @@ Following the implementation of the hierarchical control architecture, the syste
 
 This clean control baseline is critical for frequency-domain diagnostics, as it prevents artificial controller noise from masking true physical defects.
 
-![Combined Frequency Analysis](FTC/figure/fig_combined_analysis.png)
+![Combined Frequency Analysis](02_Adaptive_FTC_and_Isolation/figure/fig_combined_analysis.png)
 
 As shown in the high-pass filtered residual analysis above, the stabilized system response successfully unmasks the injected faults:
 * **Time-Domain Stabilization:** The Accel and Torque Residuals for Joint 2 (Shoulder) and Joint 3 (Elbow) now remain tightly bounded around zero, proving the controller successfully tracks the trajectory despite the severe stiffness degradation.
@@ -281,7 +281,7 @@ The output of this filter serves two critical functions in the cyber-physical pi
 1. **Fault Detection:** Simultaneous tracking of all 4 axes forces the rigid model to absorb unmodeled transmission disturbances, resulting in an unphysical parameter drift that acts as the initial diagnostic trigger.
 2. **Adaptive Safety:** The estimated stiffness ($\hat{K}_{\text{stiff}}$) is continuously fed forward into the NMPC layer, allowing the controller to dynamically scale its objective function and maintain stability even as the structural integrity of the arm collapses.
 
-![estimation of stiffness](figure/fig_stiffness_estimation.png)
+![estimation of stiffness](01_Diagnostic_Boundaries/figure/fig_stiffness_estimation.png)
 
 The system's nominal joint stiffness is initialized at a baseline of 50,000 N/m. During operation, Joint 1 (Base) remains stable and accurately tracks this nominal value. However, the downstream joints exhibit severe, unphysical parameter drift. Joint 4 (Wrist) converges to a significantly higher value (>60,000 N/m), while Joints 2 (Shoulder) and 3 (Elbow) collapse to approximately 200 N/m—drastically below the nominal threshold.
 
@@ -327,7 +327,7 @@ $$\text{Fault Location} = \text{argmin}_i (S_{k, i})$$
 Once isolated, the supervisor feeds the "winning" state estimations and stiffness back to the NMPC to ensure safe, fault-tolerant closed-loop operation. 
 
 
-![stiffness fault isolation](FTC/figure/fig_isolation_results.png)
+![stiffness fault isolation](02_Adaptive_FTC_and_Isolation/figure/fig_isolation_results.png)
 
 ### 3. Analysis of Isolation Results
 
