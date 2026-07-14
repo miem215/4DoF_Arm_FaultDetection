@@ -181,7 +181,7 @@ The stiffness of Joint 2 was incrementally reduced from its nominal rigid state 
 *   **The Breaking Point (e.g., $K \approx 10,000$):** At this critical threshold, the plant-model mismatch introduces enough unmodeled phase lag to push the dominant closed-loop poles directly onto the discrete stability boundary ($z = -1$). 
 *   **Severe Degradation ($K < 5,000$):** The system enters hard bang-bang saturation. Diagnosability is completely lost to spectral masking. 
 
->[Important]
+>[!IMPORTANT]
 >The capability to diagnose additive micro-faults in closed-loop systems is strictly bounded by the robustness margins of the controller. Highly aggressive optimal controllers required for industrial motion systems inherently possess narrower robustness margins, meaning structural parametric failures will rapidly trigger instability, masking underlying additive faults.
 >
 >Once structural integrity falls below this critical threshold, standard diagnostics are rendered useless by the masking noise of the controller. To maintain system monitoring, the fundamental control strategy must change. This leads to the next challenge: can we design a fault-tolerant control architecture that resolves these stiff differential equations and restores a clean diagnostic baseline?
@@ -283,7 +283,7 @@ The system's nominal joint stiffness is initialized at a baseline of 50,000 N/m.
 
 Because the UKF is forced to absorb unmodeled physical disturbances across a coupled kinematic chain, the erratic multi-axis convergence mathematically confirms that a structural degradation has occurred somewhere downstream of Joint 1.
 
->[IMPORTANT]
+>[!IMPORTANT]
 >Fault-tolerant control can successfully stabilize the degraded plant, but it fundamentally requires a coupled, real-time estimation layer to function. To prevent solver collapse while managing severe compliance, the architecture relies on a 12-state Augmented UKF to continuously track joint stiffness. This estimated parameter is fed directly into the NMPC macro-planner, dynamically scaling the controller's objective function to ensure safe operation as the joint softens. This coupled UKF-FTC framework proves highly effective at keeping the system alive, and the 12-state UKF's output—which exhibits severe, unphysical multi-axis parameter drift as it absorbs unmodeled disturbances—serves as undeniable evidence that a structural degradation has occurred downstream  
 >
 >While the 12-state UKF successfully acts as a safety governor and detects that a systemic anomaly exists, its multi-axis convergence is erratic. It proves the system is breaking, but it cannot definitively isolate the localized structural failure to a single joint. This fundamental limitation directly motivates the final phase of the investigation: how must the estimation architecture evolve to autonomously isolate and identify the exact location of the fault in real-time?
