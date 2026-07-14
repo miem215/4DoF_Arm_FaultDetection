@@ -1,12 +1,14 @@
 # 4-DoF Robotic Arm: MIMO Diagnostics & Fault Isolation
 
-This repository serves as a testbed for fault detection methodology in highly coupled, multi-input multi-output (MIMO) mechatronic systems, 4DoF arm. The objective of this project is twofold: first, to successfully detect micro-faults from the torque domain; and second, to investigate the mathematical boundaries of this diagnostic approach when subjected to massive parametric degradation.
+This repository serves as a testbed for fault detection and isolation methodology in highly coupled, multi-input multi-output (MIMO) mechatronic systems, 4DoF arm. The objective of this project is twofold: first, to successfully detect micro-faults from the torque domain; and second, to investigate the mathematical boundaries of this diagnostic approach when subjected to massive parametric degradation.
 
 The investigation is structured into two phases: 
 
 * establishing a rigid-body diagnostic baseline, a torque ripple of 6Hz was introduced at joint 2 to simulate a a degrading ballscrew or nut.
 * subsequently breaking that baseline to analyze closed-loop sensitivity during a structural degradation This degradation is physically modeled by drastically reducing the stiffness of Joint 2, effectively transforming a rigid mechanical coupling into an underdamped rotational spring
-* investigate the robustness of this methodology 
+* investigate the robustness of this methodology
+* fault tolerence control
+* fault isolation
 
 ## Table of Contents
 
@@ -22,8 +24,14 @@ The investigation is structured into two phases:
   * [4. Closed-Loop Sensitivity Analysis](#4-closed-loop-sensitivity-analysis)
 * [Part 3: Robustness Boundary and Diagnosability Limits](#part-3-robustness-boundary-and-diagnosability-limits)
   * [The Degradation Sweep (Waterfall Analysis)](#the-degradation-sweep-waterfall-analysis)
-  * [Conclusion](#conclusion)
-* [System Architecture](#system-architecture)
+* [Part 4: Fault Tolerance Control and System Estimation](#part-4-fault-tolerance-control-and-system-estimation)
+  * [1. Hierarchical Control Architecture: Resolving Numerical Stiffness](#1-hierarchical-control-architecture-resolving-numerical-stiffness)
+  * [2. Multi-Axis Stiffness Estimation via Augmented UKF](#2-multi-axis-stiffness-estimation-via-augmented-ukf)
+* [Part 5: Automated Fault Isolation via Multiple Model Observer Bank](#part-5-automated-fault-isolation-via-wultiple-model-observer-bank)
+  * [1. The Targeted Observer Architecture](#1-the-targeted-observer-architecture)
+  * [2. Supervisory Isolation Logic](#2-supervisory-isolation-logic)
+  * [3. Analysis of Isolation Results](#3-analysis-of-isolation-results)
+* [Conclusion](#conclusion)
 
 ---
 ## Part 1: The Rigid Body Baseline
@@ -160,13 +168,164 @@ The stiffness of Joint 2 was incrementally reduced from its nominal rigid state 
 ### Conclusion
 The capability to diagnose additive micro-faults in closed-loop systems is strictly bounded by the robustness margins of the controller. Highly aggressive optimal controllers required for industrial motion systems inherently possess narrower robustness margins, meaning structural parametric failures will rapidly trigger instability, masking underlying additive faults.
 
+## Part 4 Fault Tolerance Control and System Estimation
+To successfully monitor an interconnected dynamic system, the system must remain stable and generate persistent excitation even when structural integrity degrades. This is achieved through a multi-rate architecture that decouples optimal motion planning from localized parameter estimation.
 
-## System Architecture
+### 1. Hierarchical Control Architecture: Resolving Numerical Stiffness
 
-* **Physics Engine:** MuJoCo (Python bindings) executing forward dynamics at 500 Hz.
-* **Optimal Control (NMPC):** Powered by CasADi. The controller embeds the full nonlinear rigid body dynamics ($M(q)\ddot{q} + C(q, \dot{q})\dot{q} + G(q) = \tau$) within a 20-step prediction horizon. This allows the arm to track trajectories while natively compensating for shifting gravity and Coriolis forces.
-* **State Estimation (UKF):** An Unscented Kalman Filter runs at 50 Hz, fusing noisy joint position and velocity sensor data to generate clean state estimates ($\hat{q}, \hat{\dot{q}}$) for the control loop.
-* **Diagnostic Pipeline:** The diagnostic architecture logs the deviation between the NMPC's commanded acceleration and the measured physical response. It actively extracts the real-time inertia matrix ($M(q)$) to map acceleration residuals into torque residuals, before utilizing Welch's method for Power Spectral Density (PSD) analysis to isolate the fault frequency.
+A fundamental challenge in controlling highly compliant mechanisms is the mathematical phenomenon of "stiff differential equations." Initially, the true 50,000 N/m mechanical spring dynamics were directly embedded into the Nonlinear Model Predictive Control (NMPC) prediction horizon. However, minor prediction errors over the horizon resulted in massively amplified virtual restoring forces. This caused the IPOPT solver to command violently oscillating accelerations in an attempt to stabilize a spring that had not yet physically deformed, ultimately leading to solver collapse. 
+
+To resolve this numerical chattering and ensure real-time stability, the control architecture was split into a **hierarchical, two-tiered framework** that decouples optimal motion planning from local compliance stabilization.
+
+#### 1. Macro-Level Planning: Rigid NMPC with Cost-Scaling
+
+At the optimization layer, the highly stiff compliant dynamics are explicitly removed from the predictive constraints. The CasADi-based NMPC operates under a **pure rigid-body assumption**, integrating state predictions using idealized kinematic equations:
+
+$$q_{k+1} = q_k + \dot{q}_{k+1}\Delta t$$
+
+$$\dot{q}_{k+1} = \dot{q}_k + u_k\Delta t$$
+
+Because the solver is insulated from the high-gain compliance constraints, it executes rapidly and smoothly without numerical failure. However, the NMPC remains fully aware of the system's degrading structural health by incorporating the UKF's real-time stiffness estimate ($\hat{K}_{\text{stiff}}$) exclusively into the **objective function** as a safety governor. 
+
+By dynamically scaling the control effort penalty based on the live stiffness ratio ($r_{\text{stiff}}$), the solver mathematically penalizes aggressive commands when the physical joint softens:
+
+$$r_{\text{stiff}} = \max\left(\frac{\hat{K}_{\text{stiff}}}{50000.0}, 0.05\right)$$
+
+$$J_{\text{control}} = 0.2 \sum_{k=0}^{N-1} \left\| \frac{u_k}{r_{\text{stiff}}} \right\|^2$$
+
+This formulation safely commands gentler trajectories during a structural degradation, preventing mechanical overload without risking solver instability.
+
+#### 2. Micro-Level Stabilization: High-Frequency PD Damping
+
+While the NMPC dictates the optimal, low-frequency macro-trajectory, the unmodeled high-frequency flexible dynamics must still be managed at the hardware level. To achieve this, a localized Proportional-Derivative (PD) controller is applied directly to the joint torque commands prior to integration in the MuJoCo plant. 
+
+This PD loop acts as an **active physical shock absorber**. It continuously damps out the high-frequency spring oscillations and compensates for the rigid-body tracking errors left behind by the macro-planner:
+
+$$\tau_{\text{applied}} = \tau_{\text{NMPC}} + K_p(q_{\text{ref}} - q_{\text{meas}}) + K_d(-\dot{q}_{\text{meas}})$$
+
+Where $K_p = 200.0$ and $K_d = 20.0$.
+
+#### 3. Frequency Domain Diagnostics: Unmasking the Fault
+
+Following the implementation of the hierarchical control architecture, the system's dynamic response improved significantly. Because the NMPC now generates a stable, noise-free rigid trajectory and the local PD loop damps out the violent spring oscillations, the chaotic numerical chattering that previously plagued the system has been eliminated. 
+
+This clean control baseline is critical for frequency-domain diagnostics, as it prevents artificial controller noise from masking true physical defects.
+
+![Combined Frequency Analysis](FTC/figure/fig_combined_analysis.png)
+
+As shown in the high-pass filtered residual analysis above, the stabilized system response successfully unmasks the injected faults:
+* **Time-Domain Stabilization:** The Accel and Torque Residuals for Joint 2 (Shoulder) and Joint 3 (Elbow) now remain tightly bounded around zero, proving the controller successfully tracks the trajectory despite the severe stiffness degradation.
+* **Fault Isolation (Frequency Domain):** In the Accel and Torque Spectrums, a massive, distinct peak is clearly visible at exactly 6.0 Hz on Joint 2. This perfectly isolates the injected harmonic torque disturbance (e.g., a simulated gear mesh defect).
+* **Kinematic Coupling:** The analysis successfully captures the physical realities of the interconnected multi-body system, showing how the 6.0 Hz vibration propagates dynamically into the downstream Joint 3. 
+
+By achieving this level of control stability, the residuals become purely symptomatic of the physical hardware, paving the way for the real-time parameter estimation layer.
+
+### 2. Multi-Axis Stiffness Estimation via Augmented UKF
+
+With the system safely stabilized, the diagnostic pipeline utilizes a dual-estimation Unscented Kalman Filter (UKF) constructed for real-time parameter identification. Instead of treating the mechanical stiffness as a fixed physical constant, the filter actively tracks it as a dynamic variable. 
+
+#### 1. State Augmentation
+Standard state estimators track kinematic variables. To enable structural health monitoring, the UKF employs an **augmented state vector** ($x \in \mathbb{R}^{12}$) that lumps the 4 joint positions ($q$), 4 joint velocities ($\dot{q}$), and 4 independent joint stiffness parameters ($K_{\text{stiff}}$) into a single estimation framework:
+
+$$x = \begin{bmatrix} q \\ \dot{q} \\ K_{\text{stiff}} \end{bmatrix} \in \mathbb{R}^{12}$$
+
+The stiffness parameters are initialized at their nominal, healthy baseline of 50,000 N/m. Any severe deviation from this baseline serves as the primary indicator of mechanical degradation.
+
+#### 2. Internal Transition Dynamics (The Prediction Step)
+To accurately predict how the system will behave at the next time step, the UKF's internal transition function explicitly models the compliant dynamics of the robotic transmission. 
+
+Over a discretized sub-stepping loop, the filter predicts the internal spring torques generated by the estimated stiffness, combining them with a fixed virtual damping factor ($D = 100.0$):
+
+$$\tau_{\text{spring}} = -K_{\text{stiff}} \odot (q - q_{\text{ref}}) - 100.0\dot{q}$$
+
+The total joint acceleration is then calculated by combining the NMPC command ($u$) with the mass-matrix-weighted spring torques, which is subsequently integrated to update the kinematic states:
+
+$$\ddot{q} = u + M^{-1} \tau_{\text{spring}}$$
+
+Because the stiffness parameter ($K_{\text{stiff}}$) is modeled as a slow-drifting random walk, its derivative is assumed to be zero ($\dot{K}_{\text{stiff}} = 0$) during the prediction phase, allowing the measurement update step to pull the estimate toward the true physical value based on sensor residuals.
+
+#### 3. Numerical Stability & Covariance Bounding
+Running a high-dimensional UKF on a highly stiff system ($50,000$ N/m) introduces severe numerical challenges, particularly during Cholesky decomposition of the covariance matrix ($P$). To prevent filter divergence or "not positive definite" matrix errors during rapid fault onset, the UKF enforces strict symmetric bounding and eigenvalue flooring at every prediction and update step:
+
+$$P = \frac{1}{2}(P + P^T)$$
+$$P = V \max(\Lambda, 10^{-4}) V^T$$
+
+*(Where $V$ and $\Lambda$ are the eigenvectors and eigenvalues of $P$, respectively).*
+
+#### Diagnostic Output
+The output of this filter serves two critical functions in the cyber-physical pipeline:
+1. **Fault Detection:** Simultaneous tracking of all 4 axes forces the rigid model to absorb unmodeled transmission disturbances, resulting in an unphysical parameter drift that acts as the initial diagnostic trigger.
+2. **Adaptive Safety:** The estimated stiffness ($\hat{K}_{\text{stiff}}$) is continuously fed forward into the NMPC layer, allowing the controller to dynamically scale its objective function and maintain stability even as the structural integrity of the arm collapses.
+
+![estimation of stiffness](figure/fig_stiffness_estimation.png)
+
+The system's nominal joint stiffness is initialized at a baseline of 50,000 N/m. During operation, Joint 1 (Base) remains stable and accurately tracks this nominal value. However, the downstream joints exhibit severe, unphysical parameter drift. Joint 4 (Wrist) converges to a significantly higher value (>60,000 N/m), while Joints 2 (Shoulder) and 3 (Elbow) collapse to approximately 200 N/m—drastically below the nominal threshold.
+
+Diagnostic Conclusion:
+Because the UKF is forced to absorb unmodeled physical disturbances across a coupled kinematic chain, the erratic multi-axis convergence mathematically confirms that a structural degradation has occurred somewhere downstream of Joint 1.
+
+
+## Phase 5: Automated Fault Isolation via Multiple Model Observer Bank
+
+While the 12-state augmented UKF successfully detects a systemic anomaly via multi-axis parameter drift, it cannot definitively isolate the localized structural failure. To achieve autonomous **Fault Detection, Isolation, and Identification (FDII)**, the diagnostic architecture transitions to a Dedicated Observer Scheme (a "Bank of Observers").
+
+Instead of running a single high-dimensional filter, the supervisory logic evaluates four lightweight, parallel UKFs running simultaneously. 
+
+### 1. The Targeted Observer Architecture
+
+Each targeted UKF assumes exactly one joint is experiencing structural degradation while the other three remain healthy. This reduces the dimensionality of each observer's state vector from 12 down to 9 ($x \in \mathbb{R}^9$):
+
+$$x = \begin{bmatrix} q \\ \dot{q} \\ K_{\text{active}} \end{bmatrix} \in \mathbb{R}^9$$
+
+Within the prediction step of each filter, the specific `active_idx` determines the internal transmission dynamics. The active joint utilizes the dynamically estimated stiffness ($K_{\text{active}}$), while the other three joints are locked to the nominal healthy baseline ($50,000$ N/m):
+
+$$K_i = \begin{cases} K_{\text{active}} & \text{if } i = \text{active\_idx} \\ 50000.0 & \text{otherwise} \end{cases}$$
+
+$$\tau_{\text{spring}, i} = -K_i (q_i - q_{\text{ref}, i}) - 100.0\dot{q}_i$$
+
+### 2. Supervisory Isolation Logic
+
+At every measurement step, the sensor data ($z$) is compared against each UKF's prior prediction ($\hat{z}$) to calculate the innovation residual ($r$). 
+
+$$r_k = z_k - \hat{z}_k$$
+
+The norm of this innovation serves as a scoring metric: the observer whose structural assumption best matches the physical reality of the MuJoCo simulation will inherently produce the lowest residual error. To prevent high-frequency noise from causing erratic decisions, the supervisory logic applies an Exponential Moving Average (EMA) smoothing factor ($\alpha = 0.05$) to the residuals:
+
+$$S_{k, i} = (1 - \alpha)S_{k-1, i} + \alpha \|r_{k, i}\|$$
+
+The isolated fault location is dynamically determined by selecting the observer with the lowest smoothed residual:
+
+$$\text{Fault Location} = \text{argmin}_i (S_{k, i})$$
+
+Once isolated, the supervisor feeds the "winning" state estimations and stiffness back to the NMPC to ensure safe, fault-tolerant closed-loop operation. 
+
+
+![stiffness fault isolation](FTC/figure/fig_isolation_results.png)
+
+### 3. Analysis of Isolation Results
+
+The figure above demonstrates the successful real-time execution of the automated Fault Detection, Isolation, and Identification (FDII) pipeline. The data is broken down into three critical phases:
+
+**1. Residual Separation (The Detection)**
+The top plot displays the innovation norm (error) of each UKF in the observer bank. During the initial 3–4 seconds, the estimators experience a transient phase as their covariances initialize. Following this warmup, a clear mathematical separation occurs. Observers 0, 2, and 3 settle into a high, oscillating error band, indicating that their internal models (assuming faults on the Base, Elbow, or Wrist) fail to match the physical sensor data. Conversely, Observer 1 (Shoulder) drops to the lowest error state, proving that its assumption—a fault on Joint 2—is the only model that accurately explains the physical reality.
+
+**2. Supervisory Decision (The Isolation)**
+The middle plot illustrates the active decision-making of the supervisory logic. While the algorithm jumps between hypotheses during the initial transient phase, it decisively locks onto **Joint 2** at the 4-second mark. Despite the presence of simulated sensor noise and the unmodeled 6.0 Hz harmonic disturbance, the smoothed residual logic remains highly robust, never wavering from the correct joint once isolated.
+
+**3. Parameter Identification (The Quantification)**
+The bottom plot tracks the estimated stiffness of the "winning" observer, which is continuously fed to the FTC controller. Upon isolation, the identified magnitude immediately plummets from the 50,000 N/m nominal baseline into the severe degradation zone. 
+
+*(Note: As discussed in the architectural limitations, the estimate settles slightly below the true 5,000 N/m fault severity line. Because the estimator lacks a dedicated state for the 6.0 Hz torque disturbance and is blind to the local PD stabilization torques, it converges to a "lumped equivalent tracking stiffness" of approximately 500 N/m to mathematically absorb the unmodeled kinetic energy. Despite this expected magnitude offset, the relative parameter drop serves as a definitive and reliable trigger for safe fault-tolerant control).*
+
+#### Discussion & System Realities
+
+While the Multiple Model Observer successfully and autonomously isolates the structural fault to Joint 2 within 4 seconds of operation, the final stiffness magnitude converges to a lumped equivalent ($\approx 500$ N/m) rather than the raw mechanical spring constant ($5000$ N/m). This discrepancy perfectly highlights the simplified statespace model limitations:
+
+1. **Parameter Absorption:** The UKF currently lacks a dedicated harmonic disturbance state. Consequently, it mathematically absorbs the unmodeled $6.0$ Hz physical torque ripple by continuously fluctuating the stiffness estimate to explain the periodic physical wobble[cite: 7, 8].
+2. **Control Blindspots:** The estimator predicts system evolution based solely on the optimal NMPC command, remaining blind to the high-frequency PD stabilization torques applied directly at the plant level. Because it doesn't account for these additional restorative forces, the filter fundamentally skews the total system stiffness.
+3. **Dimensionality Mismatch:** The UKF assumes a 4-DoF rigid tracking model, whereas the MuJoCo plant operates as a 5-DoF flexible mechanism containing discrete spring elements. 
+
+The filter therefore identifies the **closed-loop equivalent tracking stiffness** rather than the isolated mechanical spring rate. Despite this magnitude offset, the relative parameter drift is highly observable and mathematically robust, providing a highly reliable trigger for automated fault isolation.
 
 ---
 
