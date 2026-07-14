@@ -1,8 +1,12 @@
 # 4-DoF Robotic Arm: MIMO Diagnostics & Fault Isolation
 
-The Primary Research Question:
+## Research Questions
+
+### The primary research question
 
 How do kinematic coupling and parametric structural degradation define the mathematical boundaries of fault diagnosability in closed-loop MIMO systems, and how can adaptive estimation architectures autonomously isolate these failures?  
+
+### Sub-questions
 
 To answer this primary research question, the investigation is structured around five consecutive sub-questions:
 
