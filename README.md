@@ -302,7 +302,7 @@ $$x = \begin{bmatrix} q \\ \dot{q} \\ K_{\text{active}} \end{bmatrix} \in \mathb
 
 Within the prediction step of each filter, the specific `active_idx` determines the internal transmission dynamics. The active joint utilizes the dynamically estimated stiffness ($K_{\text{active}}$), while the other three joints are locked to the nominal healthy baseline ($50,000$ N/m):
 
-$$K_{i} = \begin{cases} K_{\text{active}} & \text{if } i = \text{active\_idx} \\ 50000.0 & \text{otherwise} \end{cases}$$
+$$K_{i} = \begin{cases} K_{\text{active}} & \text{if } i = \text{active}_{\text{idx}} \\ 50000.0 & \text{otherwise} \end{cases}$$
 
 $$\tau_{\text{spring}, i} = -K_i (q_i - q_{\text{ref}, i}) - 100.0\dot{q}_i$$
 
