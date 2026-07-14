@@ -41,7 +41,7 @@ To answer this primary research question, the investigation is structured around
   * [1. The Targeted Observer Architecture](#1-the-targeted-observer-architecture)
   * [2. Supervisory Isolation Logic](#2-supervisory-isolation-logic)
   * [3. Analysis of Isolation Results](#3-analysis-of-isolation-results)
-* [Conclusion](#conclusion)
+* [Discussion & System Realities](#discussion--system-realities)
 
 ---
 ## Part 1:  Baseline Diagnosability in a Healthy Interconnected System
@@ -349,7 +349,7 @@ As discussed in the architectural limitations, the estimate settles slightly bel
 >
 > **Answering the Primary Research Question:** This final architecture demonstrates that while kinematic coupling and parametric structural degradation fundamentally break standard diagnostic boundaries via control-induced spectral masking, these limits are not absolute. By separating the system into a stable macro-planner and an active micro-stabilizer, and deploying an adaptive estimation architecture, it is possible to mathematically bypass control-induced masking noise and restore autonomous fault isolation in highly degraded, closed-loop MIMO systems.
 
-#### Discussion & System Realities
+## Discussion & System Realities
 
 While the Multiple Model Observer successfully and autonomously isolates the structural fault to Joint 2 within 4 seconds of operation, the final stiffness magnitude converges to a lumped equivalent ($\approx 500$ N/m) rather than the raw mechanical spring constant ($5000$ N/m). This discrepancy perfectly highlights the simplified statespace model limitations:
 
