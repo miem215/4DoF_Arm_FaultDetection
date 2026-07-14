@@ -92,7 +92,7 @@ To prove this, we tracked the real-time values of the inverse inertia matrix dur
 * **The Blue Line $(M^{-1})_{22}$:** Represents how much the Shoulder (Joint 2) accelerates when a torque is applied to itself. Its magnitude stays relatively low, hovering between 0.1 and 0.18.
 * **The Red Line $(M^{-1})_{32}$:** Represents how much the Elbow (Joint 3) accelerates when that exact same torque is applied to the Shoulder. Its absolute magnitude is significantly higher, sweeping between 0.15 and 0.40.
 
-Because the absolute value of the red line is consistently larger than the blue line throughout the entire 11.5-second sweep, it is mathematically guaranteed that the Elbow will always accelerate faster than the Shoulder when a fault occurs in the Shoulder.
+Because the absolute value of the red line is consistently larger than the blue line throughout the entire 11.5-second sweep, it is predicted by the model that the Elbow will always accelerate faster than the Shoulder when a fault occurs in the Shoulder.
 
 ### 4. Diagnostic Report: Acceleration vs. Torque
 Raw acceleration magnitude cannot be used to isolate faults in open-chain robotics. To truly isolate the root cause, acceleration residuals must be mapped back through the inertia matrix to generate **Torque Residuals** ($\tau_{res} = M(q)\Delta\ddot{q}$).
@@ -237,7 +237,7 @@ This clean control baseline is critical for frequency-domain diagnostics, as it 
 
 As shown in the high-pass filtered residual analysis above, the stabilized system response successfully unmasks the injected faults:
 * **Time-Domain Stabilization:** The Accel and Torque Residuals for Joint 2 (Shoulder) and Joint 3 (Elbow) now remain tightly bounded around zero, proving the controller successfully tracks the trajectory despite the severe stiffness degradation.
-* **Fault Isolation (Frequency Domain):** In the Accel and Torque Spectrums, a massive, distinct peak is clearly visible at exactly 6.0 Hz on Joint 2. This perfectly isolates the injected harmonic torque disturbance (e.g., a simulated gear mesh defect).
+* **Fault Isolation (Frequency Domain):** In the Accel and Torque Spectrums, a massive, distinct peak is clearly visible at exactly 6.0 Hz on Joint 2. This correctly isolates the injected harmonic torque disturbance (e.g., a simulated gear mesh defect).
 * **Kinematic Coupling:** The analysis successfully captures the physical realities of the interconnected multi-body system, showing how the 6.0 Hz vibration propagates dynamically into the downstream Joint 3. 
 
 By achieving this level of control stability, the residuals become purely symptomatic of the physical hardware, paving the way for the real-time parameter estimation layer.
@@ -288,7 +288,7 @@ The system's nominal joint stiffness is initialized at a baseline of 50,000 N/m.
 Because the UKF is forced to absorb unmodeled physical disturbances across a coupled kinematic chain, the erratic multi-axis convergence mathematically confirms that a structural degradation has occurred somewhere downstream of Joint 1.
 
 >[!IMPORTANT]
->Fault-tolerant control can successfully stabilize the degraded plant, but it fundamentally requires a coupled, real-time estimation layer to function. To prevent solver collapse while managing severe compliance, the architecture relies on a 12-state Augmented UKF to continuously track joint stiffness. This estimated parameter is fed directly into the NMPC macro-planner, dynamically scaling the controller's objective function to ensure safe operation as the joint softens. This coupled UKF-FTC framework proves highly effective at keeping the system alive, and the 12-state UKF's output—which exhibits severe, unphysical multi-axis parameter drift as it absorbs unmodeled disturbances—serves as undeniable evidence that a structural degradation has occurred downstream  
+>Fault-tolerant control can successfully stabilize the degraded plant, but it fundamentally requires a coupled, real-time estimation layer to function. To prevent solver collapse while managing severe compliance, the architecture relies on a 12-state Augmented UKF to continuously track joint stiffness. This estimated parameter is fed directly into the NMPC macro-planner, dynamically scaling the controller's objective function to ensure safe operation as the joint softens. This coupled UKF-FTC framework proves highly effective at keeping the system alive, and the 12-state UKF's output—which exhibits severe, unphysical multi-axis parameter drift as it absorbs unmodeled disturbances—serves as strong evidence that a structural degradation has occurred downstream  
 >
 >While the 12-state UKF successfully acts as a safety governor and detects that a systemic anomaly exists, its multi-axis convergence is erratic. It proves the system is breaking, but it cannot definitively isolate the localized structural failure to a single joint. This fundamental limitation directly motivates the final phase of the investigation: how must the estimation architecture evolve to autonomously isolate and identify the exact location of the fault in real-time?
 
@@ -347,7 +347,7 @@ As discussed in the architectural limitations, the estimate settles slightly bel
 > [!IMPORTANT]
 > Localized structural faults can be autonomously isolated in real-time by deploying a Dedicated Observer Scheme (a Multiple Model Observer bank). By running four lightweight, targeted UKFs—each operating under the hypothesis that a different joint is failing—supervisory logic can dynamically evaluate their smoothed innovation residuals. The observer model that best matches the physical plant naturally produces the lowest error, allowing the supervisor to autonomously isolate the degraded joint within 4 seconds and feed this data back to the NMPC.
 >
-> **Answering the Primary Research Question:** This final architecture demonstrates that while kinematic coupling and parametric structural degradation fundamentally break standard diagnostic boundaries via control-induced spectral masking, these limits are not absolute. By separating the system into a stable macro-planner and an active micro-stabilizer, and deploying an adaptive estimation architecture, it is possible to mathematically bypass control-induced masking noise and restore autonomous fault isolation in highly degraded, closed-loop MIMO systems.
+> **Answering the Primary Research Question:** Primary Finding. Kinematic coupling and structural degradation can fundamentally compromise fault diagnosability through control-induced spectral masking. However, by combining fault-tolerant control, adaptive parameter estimation, and multiple-model observers, diagnosability can be restored even under severe degradation. The proposed architecture successfully isolated the true fault location within four seconds while maintaining closed-loop system stability.
 
 ## Discussion & System Realities
 
