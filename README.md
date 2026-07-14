@@ -1,18 +1,24 @@
 # 4-DoF Robotic Arm: MIMO Diagnostics & Fault Isolation
 
-This repository serves as a testbed for fault detection and isolation methodology in highly coupled, multi-input multi-output (MIMO) mechatronic systems, 4DoF arm. The objective of this project is twofold: first, to successfully detect micro-faults from the torque domain; and second, to investigate the mathematical boundaries of this diagnostic approach when subjected to massive parametric degradation.
+The Primary Research Question:
 
-The investigation is structured into two phases: 
+How do kinematic coupling and parametric structural degradation define the mathematical boundaries of fault diagnosability in closed-loop MIMO systems, and how can adaptive estimation architectures autonomously isolate these failures?  
 
-* establishing a rigid-body diagnostic baseline, a torque ripple of 6Hz was introduced at joint 2 to simulate a a degrading ballscrew or nut.
-* subsequently breaking that baseline to analyze closed-loop sensitivity during a structural degradation This degradation is physically modeled by drastically reducing the stiffness of Joint 2, effectively transforming a rigid mechanical coupling into an underdamped rotational spring
-* investigate the robustness of this methodology
-* fault tolerence control
-* fault isolation
+To answer this primary research question, the investigation is structured around five consecutive sub-questions:
+
+1. Can additive micro-faults be reliably isolated in a highly coupled MIMO robotic system?Investigation Focus: Analyzing how open-chain kinematics (the "Whip Effect") distort traditional acceleration residuals, and proving that mapping these errors into the torque domain via the inverse inertia matrix mathematically decouples structural vibrations to isolate the true fault.  
+
+2. How does structural degradation affect diagnosability?Investigation Focus: Evaluating the impact of severe plant-model mismatch (e.g., losing joint stiffness) on closed-loop optimal control, specifically how unmodeled phase lag pushes the system toward a $z = -1$ instability that generates spectral masking.  
+
+3. At what degradation threshold does fault isolation fail?Investigation Focus: Mapping the precise robustness boundaries of the Nonlinear Model Predictive Controller (NMPC) via a continuous degradation sweep, identifying the exact stiffness threshold where control-induced high-frequency chatter fully blinds the diagnostic pipeline.  
+
+4. Can fault-tolerant control restore diagnosability after robustness margins are exceeded?Investigation Focus: Designing a multi-rate, hierarchical control architecture (macro-level rigid NMPC and micro-level PD damping) to resolve numerical stiffness, stabilize the degraded plant, and unmask the underlying physical faults.  
+
+5. How can localized structural faults be autonomously isolated in real-time?Investigation Focus: Deploying a dedicated Multiple Model Observer (MMO) bank of targeted Unscented Kalman Filters (UKFs) combined with supervisory logic to dynamically evaluate smoothed innovation residuals, achieving autonomous Fault Detection, Isolation, and Identification (FDII).
 
 ## Table of Contents
 
-* [Part 1: The Rigid Body Baseline](#part-1-the-rigid-body-baseline-mathematical-decoupling)
+* [Part 1: Baseline Diagnosability in a Healthy Interconnected System](#part-1--baseline-diagnosability-in-a-healthy-interconnected-system)
   * [1. Fault Injection & Diagnostic Pipeline](#1-fault-injection--diagnostic-pipeline)
   * [2. Analytical Findings: The Whip Effect](#2-analytical-findings-the-whip-effect)
   * [3. Inertia Analysis](#3-inertia-analysis)
@@ -34,7 +40,7 @@ The investigation is structured into two phases:
 * [Conclusion](#conclusion)
 
 ---
-## Part 1: The Rigid Body Baseline
+## Part 1:  Baseline Diagnosability in a Healthy Interconnected System
 
 The first phase establishes a successful diagnostic pipeline for a structurally healthy, rigid system.
 
@@ -95,15 +101,20 @@ Raw acceleration magnitude cannot be used to isolate faults in open-chain roboti
 | **Joint 3 (Elbow)** | **0.463273** | 0.015443 |
 | **Joint 4 (Wrist)** | 0.249227 | 0.006595 |
 
+##### Isolation Results
+* **Algorithm via Acceleration:** Flagged **Joint 3 (Elbow)** *(Kinematic Amplification Trap)*
+* **Algorithm via Torque:** Flagged **Joint 2 (Shoulder)** *(True Root Cause)*
+
 ![Combined Domain Analysis Plot](figure/fig_combined_analysis_bench.png)
 This combined plot visualizes exactly how the diagnostic algorithm behaves before and after the inertia correction:
 
 * **The Red Columns (Acceleration Space):** These plots show the raw acceleration errors. You can clearly see the "Whip Effect" in action—the frequency peak for Joint 3 (Elbow) is visibly larger than the peak for the actually broken Joint 2 (Shoulder). If an algorithm stops here, it fails.
 * **The Blue Columns (Torque Space):** These plots show the same data after it has been multiplied by the robot's real-time inertia matrix. By mathematically factoring in the mass and mechanical leverage of each link, the structural distortion is stripped away. The true fault in Joint 2 (Shoulder) emerges as the undeniable dominant spike.
 
-##### Isolation Results
-* **Algorithm via Acceleration:** Flagged **Joint 3 (Elbow)** *(Kinematic Amplification Trap)*
-* **Algorithm via Torque:** Flagged **Joint 2 (Shoulder)** *(True Root Cause)*
+> [!IMPORTANT]
+> Additive micro-faults can be reliably isolated in highly coupled MIMO systems, but fundamentally cannot rely on raw acceleration data. Open-chain kinematics generate a "Whip Effect," where proximal joint vibrations force distal links into massive angular accelerations to hold their posture, tricking acceleration-based algorithms into flagging healthy joints. However, mapping these acceleration errors into the torque domain using the inverse inertia matrix mathematically factors out the mechanical leverage, stripping away the structural distortion and successfully isolating the true root cause.
+
+> This mathematical decoupling successfully identifies faults within a structurally rigid baseline. However, real-world hardware undergoes physical wear. If the physical plant degrades and loses stiffness, it violates the controller's rigid-body assumptions, raising the next critical question: how does severe structural degradation and plant-model mismatch affect closed-loop diagnosability?
 
 ## Part 2: The Flexible Boundary (Plant-Model Mismatch & Sensitivity)
 
