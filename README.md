@@ -29,7 +29,7 @@ To answer this primary research question, the investigation is structured around
   * [3. The Mathematical Proof of Instability (Z-Domain)](#3-the-mathematical-proof-of-instability-z-domain)
   * [4. Closed-Loop Sensitivity Analysis](#4-closed-loop-sensitivity-analysis)
 * [Part 3: Robustness Boundary and Diagnosability Limits](#part-3-robustness-boundary-and-diagnosability-limits)
-  * [The Degradation Sweep (Waterfall Analysis)](#the-degradation-sweep-waterfall-analysis)
+  * [The Degradation Sweep (Waterfall Analysis)](#the-degradation-sweep)
 * [Part 4: Fault Tolerance Control and System Estimation](#part-4-fault-tolerance-control-and-system-estimation)
   * [1. Hierarchical Control Architecture: Resolving Numerical Stiffness](#1-hierarchical-control-architecture-resolving-numerical-stiffness)
   * [2. Multi-Axis Stiffness Estimation via Augmented UKF](#2-multi-axis-stiffness-estimation-via-augmented-ukf)
@@ -113,7 +113,7 @@ This combined plot visualizes exactly how the diagnostic algorithm behaves befor
 
 > [!IMPORTANT]
 > Additive micro-faults can be reliably isolated in highly coupled MIMO systems, but fundamentally cannot rely on raw acceleration data. Open-chain kinematics generate a "Whip Effect," where proximal joint vibrations force distal links into massive angular accelerations to hold their posture, tricking acceleration-based algorithms into flagging healthy joints. However, mapping these acceleration errors into the torque domain using the inverse inertia matrix mathematically factors out the mechanical leverage, stripping away the structural distortion and successfully isolating the true root cause.
-
+>
 > This mathematical decoupling successfully identifies faults within a structurally rigid baseline. However, real-world hardware undergoes physical wear. If the physical plant degrades and loses stiffness, it violates the controller's rigid-body assumptions, raising the next critical question: how does severe structural degradation and plant-model mismatch affect closed-loop diagnosability?
 
 ## Part 2: The Flexible Boundary (Plant-Model Mismatch & Sensitivity)
@@ -161,6 +161,11 @@ $$S(j\omega) = (I + G(j\omega)K(j\omega))^{-1}$$
 *   **The Low-Frequency Resonance (0 - 2 Hz):** The magnitude of the degraded state (red curve) spikes rapidly above 0 dB. This proves mathematically that the closed-loop system is actively amplifying the low-frequency structural bounce.
 *   **The High-Frequency Filtering (> 5 Hz):** The sensitivity drops linearly into the negative dB range. The floppy joint acts as a mechanical low-pass filter, physically absorbing the high-frequency injected torques (the 6.0 Hz ripple) rather than transmitting them to the heavy arm links. Because the physical structure absorbs the high-frequency fault, the controller's sensitivity to it physically drops.
 
+>[!IMPORTANT]
+>Structural degradation completely undermines diagnosability by inducing a state of closed-loop spectral masking. When a joint degrades into an underdamped spring, applying an optimal rigid-body feedback gain introduces severe unmodeled phase lag. This mathematically forces the closed-loop dominant eigenvalue out of the discrete stability unit circle ($z = -1$), causing violent, high-frequency control chatter (a 25 Hz limit cycle). This resulting control effort explosion acts as spectral masking, entirely blinding the frequency-domain diagnostic pipeline to the underlying additive fault.  
+>
+>Recognizing that high-frequency control chatter is a secondary symptom of structural failure, it becomes necessary to define the exact mathematical limits of this phenomenon. If the diagnostic pipeline is blinded by controller instability, at what precise threshold of parametric degradation does the controller's robustness margin collapse and fault isolation fail entirely? 
+
 ## Part 3: Robustness Boundary and Diagnosability Limits
 
 The previous analysis establishes that massive structural degradation induces spectral masking via control instability. However, this raises a fundamental control theory question: at what exact threshold of degradation does the diagnostic algorithm break down? 
@@ -176,17 +181,19 @@ The stiffness of Joint 2 was incrementally reduced from its nominal rigid state 
 *   **The Breaking Point (e.g., $K \approx 10,000$):** At this critical threshold, the plant-model mismatch introduces enough unmodeled phase lag to push the dominant closed-loop poles directly onto the discrete stability boundary ($z = -1$). 
 *   **Severe Degradation ($K < 5,000$):** The system enters hard bang-bang saturation. Diagnosability is completely lost to spectral masking. 
 
-### Conclusion
-The capability to diagnose additive micro-faults in closed-loop systems is strictly bounded by the robustness margins of the controller. Highly aggressive optimal controllers required for industrial motion systems inherently possess narrower robustness margins, meaning structural parametric failures will rapidly trigger instability, masking underlying additive faults.
+>[Important]
+>The capability to diagnose additive micro-faults in closed-loop systems is strictly bounded by the robustness margins of the controller. Highly aggressive optimal controllers required for industrial motion systems inherently possess narrower robustness margins, meaning structural parametric failures will rapidly trigger instability, masking underlying additive faults.
+>
+>Once structural integrity falls below this critical threshold, standard diagnostics are rendered useless by the masking noise of the controller. To maintain system monitoring, the fundamental control strategy must change. This leads to the next challenge: can we design a fault-tolerant control architecture that resolves these stiff differential equations and restores a clean diagnostic baseline?
 
 ## Part 4 Fault Tolerance Control and System Estimation
-To successfully monitor an interconnected dynamic system, the system must remain stable and generate persistent excitation even when structural integrity degrades. This is achieved through a multi-rate architecture that decouples optimal motion planning from localized parameter estimation.
+To successfully operate and monitor an interconnected dynamic system during a structural failure, the controller cannot fly blind. The system must remain stable and generate persistent excitation even as its mechanical integrity collapses. This is achieved through a coupled cyber-physical architecture, where the optimal controller (NMPC) fundamentally relies on real-time parameter estimation (UKF) acting as a safety governor to survive the degradation.
 
 ### 1. Hierarchical Control Architecture: Resolving Numerical Stiffness
 
-A fundamental challenge in controlling highly compliant mechanisms is the mathematical phenomenon of "stiff differential equations." Initially, the true 50,000 N/m mechanical spring dynamics were directly embedded into the Nonlinear Model Predictive Control (NMPC) prediction horizon. However, minor prediction errors over the horizon resulted in massively amplified virtual restoring forces. This caused the IPOPT solver to command violently oscillating accelerations in an attempt to stabilize a spring that had not yet physically deformed, ultimately leading to solver collapse. 
+A fundamental challenge in controlling highly compliant mechanisms is the mathematical phenomenon of "stiff differential equations". Initially, the true 50,000 N/m mechanical spring dynamics were directly embedded into the Nonlinear Model Predictive Control (NMPC) prediction horizon. However, minor prediction errors over the horizon resulted in massively amplified virtual restoring forces. This caused the IPOPT solver to command violently oscillating accelerations in an attempt to stabilize a spring that had not yet physically deformed, ultimately leading to solver collapse.  
 
-To resolve this numerical chattering and ensure real-time stability, the control architecture was split into a **hierarchical, two-tiered framework** that decouples optimal motion planning from local compliance stabilization.
+To resolve this numerical chattering, the control architecture was split into a hierarchical, two-tiered framework. The optimal motion planner operates under a rigid-body assumption to bypass stiff constraints, while high-frequency compliance is stabilized locally. However, for this rigid macro-planner to safely navigate a physically degrading plant, it requires continuous, real-time guidance from an estimation layer.
 
 #### 1. Macro-Level Planning: Rigid NMPC with Cost-Scaling
 
@@ -233,7 +240,9 @@ By achieving this level of control stability, the residuals become purely sympto
 
 ### 2. Multi-Axis Stiffness Estimation via Augmented UKF
 
-With the system safely stabilized, the diagnostic pipeline utilizes a dual-estimation Unscented Kalman Filter (UKF) constructed for real-time parameter identification. Instead of treating the mechanical stiffness as a fixed physical constant, the filter actively tracks it as a dynamic variable. 
+Functioning as the critical safety governor for the NMPC, the pipeline utilizes a 12-state Augmented Unscented Kalman Filter (UKF) for real-time parameter identification. Instead of treating the mechanical stiffness as a fixed physical constant, the filter actively tracks it as a dynamic variable.  
+
+This continuous estimation is what enables the fault-tolerant control to function: the estimated stiffness ($\hat{K}_{\text{stiff}}$) is fed directly into the NMPC layer, allowing the controller to dynamically scale its objective function. By mathematically penalizing aggressive control commands relative to the dropping stiffness, the UKF ensures the system remains stable enough to continue capturing diagnostic data, even as structural integrity collapses.
 
 #### 1. State Augmentation
 Standard state estimators track kinematic variables. To enable structural health monitoring, the UKF employs an **augmented state vector** ($x \in \mathbb{R}^{12}$) that lumps the 4 joint positions ($q$), 4 joint velocities ($\dot{q}$), and 4 independent joint stiffness parameters ($K_{\text{stiff}}$) into a single estimation framework:
@@ -272,9 +281,12 @@ The output of this filter serves two critical functions in the cyber-physical pi
 
 The system's nominal joint stiffness is initialized at a baseline of 50,000 N/m. During operation, Joint 1 (Base) remains stable and accurately tracks this nominal value. However, the downstream joints exhibit severe, unphysical parameter drift. Joint 4 (Wrist) converges to a significantly higher value (>60,000 N/m), while Joints 2 (Shoulder) and 3 (Elbow) collapse to approximately 200 N/m—drastically below the nominal threshold.
 
-Diagnostic Conclusion:
 Because the UKF is forced to absorb unmodeled physical disturbances across a coupled kinematic chain, the erratic multi-axis convergence mathematically confirms that a structural degradation has occurred somewhere downstream of Joint 1.
 
+>[IMPORTANT]
+>Fault-tolerant control can successfully stabilize the degraded plant, but it fundamentally requires a coupled, real-time estimation layer to function. To prevent solver collapse while managing severe compliance, the architecture relies on a 12-state Augmented UKF to continuously track joint stiffness. This estimated parameter is fed directly into the NMPC macro-planner, dynamically scaling the controller's objective function to ensure safe operation as the joint softens. This coupled UKF-FTC framework proves highly effective at keeping the system alive, and the 12-state UKF's output—which exhibits severe, unphysical multi-axis parameter drift as it absorbs unmodeled disturbances—serves as undeniable evidence that a structural degradation has occurred downstream  
+>
+>While the 12-state UKF successfully acts as a safety governor and detects that a systemic anomaly exists, its multi-axis convergence is erratic. It proves the system is breaking, but it cannot definitively isolate the localized structural failure to a single joint. This fundamental limitation directly motivates the final phase of the investigation: how must the estimation architecture evolve to autonomously isolate and identify the exact location of the fault in real-time?
 
 ## Phase 5: Automated Fault Isolation via Multiple Model Observer Bank
 
@@ -326,17 +338,20 @@ The middle plot illustrates the active decision-making of the supervisory logic.
 **3. Parameter Identification (The Quantification)**
 The bottom plot tracks the estimated stiffness of the "winning" observer, which is continuously fed to the FTC controller. Upon isolation, the identified magnitude immediately plummets from the 50,000 N/m nominal baseline into the severe degradation zone. 
 
-*(Note: As discussed in the architectural limitations, the estimate settles slightly below the true 5,000 N/m fault severity line. Because the estimator lacks a dedicated state for the 6.0 Hz torque disturbance and is blind to the local PD stabilization torques, it converges to a "lumped equivalent tracking stiffness" of approximately 500 N/m to mathematically absorb the unmodeled kinetic energy. Despite this expected magnitude offset, the relative parameter drop serves as a definitive and reliable trigger for safe fault-tolerant control).*
+As discussed in the architectural limitations, the estimate settles slightly below the true 5,000 N/m fault severity line. Because the estimator lacks a dedicated state for the 6.0 Hz torque disturbance and is blind to the local PD stabilization torques, it converges to a "lumped equivalent tracking stiffness" of approximately 500 N/m to mathematically absorb the unmodeled kinetic energy. Despite this expected magnitude offset, the relative parameter drop serves as a definitive and reliable trigger for safe fault-tolerant control.
+
+> [!IMPORTANT]
+> Localized structural faults can be autonomously isolated in real-time by deploying a Dedicated Observer Scheme (a Multiple Model Observer bank). By running four lightweight, targeted UKFs—each operating under the hypothesis that a different joint is failing—supervisory logic can dynamically evaluate their smoothed innovation residuals. The observer model that best matches the physical plant naturally produces the lowest error, allowing the supervisor to autonomously isolate the degraded joint within 4 seconds and feed this data back to the NMPC.
+>
+> **Answering the Primary Research Question:** This final architecture demonstrates that while kinematic coupling and parametric structural degradation fundamentally break standard diagnostic boundaries via control-induced spectral masking, these limits are not absolute. By separating the system into a stable macro-planner and an active micro-stabilizer, and deploying an adaptive estimation architecture, it is possible to mathematically bypass control-induced masking noise and restore autonomous fault isolation in highly degraded, closed-loop MIMO systems.
 
 #### Discussion & System Realities
 
 While the Multiple Model Observer successfully and autonomously isolates the structural fault to Joint 2 within 4 seconds of operation, the final stiffness magnitude converges to a lumped equivalent ($\approx 500$ N/m) rather than the raw mechanical spring constant ($5000$ N/m). This discrepancy perfectly highlights the simplified statespace model limitations:
 
-1. **Parameter Absorption:** The UKF currently lacks a dedicated harmonic disturbance state. Consequently, it mathematically absorbs the unmodeled $6.0$ Hz physical torque ripple by continuously fluctuating the stiffness estimate to explain the periodic physical wobble[cite: 7, 8].
+1. **Parameter Absorption:** The UKF currently lacks a dedicated harmonic disturbance state. Consequently, it mathematically absorbs the unmodeled $6.0$ Hz physical torque ripple by continuously fluctuating the stiffness estimate to explain the periodic physical wobble.
 2. **Control Blindspots:** The estimator predicts system evolution based solely on the optimal NMPC command, remaining blind to the high-frequency PD stabilization torques applied directly at the plant level. Because it doesn't account for these additional restorative forces, the filter fundamentally skews the total system stiffness.
 3. **Dimensionality Mismatch:** The UKF assumes a 4-DoF rigid tracking model, whereas the MuJoCo plant operates as a 5-DoF flexible mechanism containing discrete spring elements. 
-
-The filter therefore identifies the **closed-loop equivalent tracking stiffness** rather than the isolated mechanical spring rate. Despite this magnitude offset, the relative parameter drift is highly observable and mathematically robust, providing a highly reliable trigger for automated fault isolation.
 
 ---
 
