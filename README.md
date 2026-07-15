@@ -4,21 +4,26 @@
 
 ### The primary research question
 
-How do kinematic coupling and parametric structural degradation define the mathematical boundaries of fault diagnosability in closed-loop MIMO systems, and how can adaptive estimation architectures autonomously isolate these failures?  
+How do kinematic coupling and parametric structural degradation define the mathematical boundaries of fault diagnosability in closed-loop MIMO systems, and what diagnostic architectures are required to transcend these limits and achieve autonomous fault isolation?  
 
 ### Sub-questions
 
 To answer this primary research question, the investigation is structured around five consecutive sub-questions:
 
-1. Can additive micro-faults be reliably isolated in a highly coupled MIMO robotic system?Investigation Focus: Analyzing how open-chain kinematics (the "Whip Effect") distort traditional acceleration residuals, and proving that mapping these errors into the torque domain via the inverse inertia matrix mathematically decouples structural vibrations to isolate the true fault.  
+1. Can additive micro-faults be reliably isolated in a highly coupled MIMO robotic system?
+Investigation Focus: Evaluating the viability of residual-based diagnostics in highly coupled open-chain mechanisms - 4DoF arm.  
 
-2. How does structural degradation affect diagnosability?Investigation Focus: Evaluating the impact of severe plant-model mismatch (e.g., losing joint stiffness) on closed-loop optimal control, specifically how unmodeled phase lag pushes the system toward a $z = -1$ instability that generates spectral masking.  
+2. How does structural degradation affect diagnosability?
+Investigation Focus: Evaluating the robustness of the diagnostic framework when subjected to severe parametric plant-model mismatch, specifically examining how a reduction in physical joint stiffness impacts fault visibility.
 
-3. At what degradation threshold does fault isolation fail?Investigation Focus: Mapping the precise robustness boundaries of the Nonlinear Model Predictive Controller (NMPC) via a continuous degradation sweep, identifying the exact stiffness threshold where control-induced high-frequency chatter fully blinds the diagnostic pipeline.  
+3. At what degradation threshold does fault isolation fail?
+Investigation Focus: Performing a continuous parameter sweep of joint stiffness to map the system's robustness boundary and identify the exact threshold where fault detectability is lost.
 
-4. Can fault-tolerant control restore diagnosability after robustness margins are exceeded?Investigation Focus: Designing a multi-rate, hierarchical control architecture (macro-level rigid NMPC and micro-level PD damping) to resolve numerical stiffness, stabilize the degraded plant, and unmask the underlying physical faults.  
+4. Can fault-tolerant control restore diagnosability after robustness margins are exceeded?
+Investigation Focus: Synthesizing a fault-tolerant control (FTC) architecture, and evaluating its capacity to maintain system stability and restore diagnosability.
 
-5. How can localized structural faults be autonomously isolated in real-time?Investigation Focus: Deploying a dedicated Multiple Model Observer (MMO) bank of targeted Unscented Kalman Filters (UKFs) combined with supervisory logic to dynamically evaluate smoothed innovation residuals, achieving autonomous Fault Detection, Isolation, and Identification (FDII).
+5. Can parallel observer architectures autonomously isolate localized structural failures in highly coupled systems?
+Investigation Focus: Exploring whether the implementation of a Multiple Model Observer (MMO) bank can reliably pinpoint specific joint degradation.
 
 ## Table of Contents
 
