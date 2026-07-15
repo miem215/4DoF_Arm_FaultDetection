@@ -1,5 +1,4 @@
-# 4-DoF Robotic Arm: MIMO Diagnostics & Fault Isolation
-
+# 4-DoF Robotic Arm: MIMO Diagnostics
 ## Research Questions
 
 ### The primary research question
