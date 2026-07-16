@@ -32,10 +32,9 @@ Investigation Focus: Exploring whether the implementation of a Multiple Model Ob
   * [3. Inertia Analysis](#3-inertia-analysis)
   * [4. Diagnostic Report: Acceleration vs. Torque](#4-diagnostic-report-acceleration-vs-torque)
 * [Part 2: The Flexible Boundary (Plant-Model Mismatch & Sensitivity)](#part-2-the-flexible-boundary-plant-model-mismatch--sensitivity)
-  * [1. Time-Domain Evidence: The Control Effort Explosion](#1-time-domain-evidence-the-control-effort-explosion)
-  * [2. Parametric Degradation & Spectral Masking](#2-parametric-degradation--spectral-masking)
-  * [3. The Mathematical Proof of Instability (Z-Domain)](#3-the-mathematical-proof-of-instability-z-domain)
-  * [4. Closed-Loop Sensitivity Analysis](#4-closed-loop-sensitivity-analysis)
+  * [1. Parametric Degradation & Spectral Masking](#2-parametric-degradation--spectral-masking)
+  * [2. The Mathematical Proof of Instability (Z-Domain)](#3-the-mathematical-proof-of-instability-z-domain)
+  * [3. Closed-Loop Sensitivity Analysis](#4-closed-loop-sensitivity-analysis)
 * [Part 3: Robustness Boundary and Diagnosability Limits](#part-3-robustness-boundary-and-diagnosability-limits)
   * [The Degradation Sweep (Waterfall Analysis)](#the-degradation-sweep)
 * [Part 4: Fault Tolerance Control and System Estimation](#part-4-fault-tolerance-control-and-system-estimation)
@@ -131,7 +130,7 @@ The second phase introduces severe parametric degradation to expose the boundari
 As shown in figure below, the 6Hz frequency content has been masked by the overal noise level. Furthermore, noise at 25Hz become dominant. 
  ![Frequency analysis with degradation](01_Diagnostic_Boundaries/figure/fig_analysis_with_degradation.png)
 
-### 1. Time-Domain Evidence: The Control Effort Explosion
+### 1. Parametric Degradation & Spectral Masking
 
 To understand why the 6.0 Hz micro-fault becomes masked in the frequency domain, we must first look at the controller's behavior in the time domain. The plots below compare the NMPC's acceleration signals during the healthy benchmark (left) and the degraded state (right).
 
@@ -142,15 +141,9 @@ To understand why the 6.0 Hz micro-fault becomes masked in the frequency domain,
 1.  **Healthy State (Rigid Plant):** The controller effort is bounded within normal operational limits. The noise profile allows the mathematical decoupling of the 6.0 Hz injected fault.
 2.  **Degraded State (Flexible Plant):** Once the joint stiffness drops, the control effort magnitude instantly increases by over 700%. More importantly, the signal density reveals violent, continuous high-frequency switching. Because the NMPC's internal model assumes a rigid body, it interprets the physical sag of the new "spring" as a massive positional error. It commands a massive torque correction, causing the spring to snap back, triggering an opposite correction on the very next time step. 
 
-This creates a continuous limit cycle at exactly **25 Hz** (the Nyquist frequency of the 50 Hz controller). This violent time-domain chattering generates the massive broadband noise that ultimately destroys the diagnostic isolation capabilities in the frequency domain.
+This creates a continuous limit cycle at exactly **25 Hz** (the Nyquist frequency of the 50 Hz controller). This violent time-domain chattering generates the massive broadband noise that renders the diagnostic pipeline blind to the underlying 6.0 Hz additive fault.
 
-### 2. Parametric Degradation & Spectral Masking
-
-This high-frequency saturation is the direct mathematical consequence of a severe plant-model mismatch. The physical arm now exhibits a low-frequency structural resonance due to the soft spring, but the NMPC's internal model still assumes it is driving a perfectly rigid plant. In its attempt to violently correct the resulting physical "bounce," the controller enters a state of instability, slamming between maximum and minimum torque commands at its fastest possible switching speed. 
-
-This phase successfully demonstrates a critical principle in high-performance mechatronic diagnostics: **extreme high-frequency control chatter is often a secondary symptom of a low-frequency structural failure.** Ultimately, the massive control effort creates spectral masking, rendering the diagnostic pipeline blind to the underlying 6.0 Hz additive fault.
-
-### 3. The Mathematical Proof of Instability (Z-Domain)
+### 2. The Mathematical Proof of Instability (Z-Domain)
 
 The 25 Hz chatter is not arbitrary noise; it is exactly the Nyquist frequency of the 50 Hz discrete controller. Mathematically, the severe plant-model mismatch (applying a rigid-body optimal feedback gain to a highly flexible plant) introduces unmodeled phase lag that pushes the closed-loop dominant eigenvalue out of the discrete unit circle.
 
@@ -159,7 +152,7 @@ The 25 Hz chatter is not arbitrary noise; it is exactly the Nyquist frequency of
 *   **The Breaking Point:** When that same high-gain $K$ is applied to the degraded plant, the unmodeled flexible spring in $A_{flex}$ introduces significant phase lag. This mathematically forces the dominant closed-loop eigenvalues of $(A_{flex} - B_{flex}K)$ to migrate leftward along the real axis until crossing the boundary at exactly $z = -1$.
 *   **The Result:** A discrete pole at $z = -1$ results in a time-domain response proportional to $(-1)^k$, forcing the NMPC to violently alternate its torque command from positive to negative at every single time step.
 
-### 4. Closed-Loop Sensitivity Analysis 
+### 3. Closed-Loop Sensitivity Analysis 
 
 To formalize the failure, we mathematically derive the continuous-time state-space matrices of the MuJoCo plant to map the Closed-Loop Sensitivity Function:
 $$S(j\omega) = (I + G(j\omega)K(j\omega))^{-1}$$
