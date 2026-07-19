@@ -1,4 +1,19 @@
 # 4-DoF Robotic Arm: MIMO Diagnostics
+
+![Arm Kinematics](01_Diagnostic_Boundaries/figure/MuJoCo_4DoF.jpg)
+
+## Engineering Highlights
+
+1. The challenge: When a structural failure occurs in a highly coupled multi-axis system, a single high-dimensional estimator forced to absorb unmodeled physical disturbances suffers from erratic, multi-axis parameter drift, making it impossible to definitively pinpoint which specific joint has actually degraded.  
+* The Solution: Developed a Dedicated Observer Scheme consisting of a bank of four parallel, lightweight $9$-state Unscented Kalman Filters (UKFs), where each filter operates under a unique hypothesis that exactly one specific joint is failing while the others remain healthy.  
+* The Result: The architecture created a clear mathematical separation of smoothed innovation residuals, allowing the supervisory logic to decisively isolate the exact degraded joint within 4 seconds of operation.
+
+2. Control Stabilization under Severe Plant DegradationThe Challenge: Severe plant-model mismatch—where a joint degrades into an underdamped spring—pushes discrete poles out of the stability unit circle ($z = -1$), generating violent 25 Hz limit-cycle chattering that blinds frequency-domain diagnostics.  
+* The Solution: Developed a two-tiered hierarchical control framework that separates a rigid CasADi-based NMPC macro-planner with cost-scaling from a high-frequency, local Proportional-Derivative (PD) damping loop.  
+* The Result: Completely eliminated numerical chattering and maintained strict closed-loop tracking stability even under a catastrophic 90% drop in structural joint stiffness, perfectly unmasking underlying physical defects.
+
+![project block diagram](02_Adaptive_FTC_and_Isolation/figure/project_scheme.png)
+
 ## Research Questions
 
 ### The primary research question
